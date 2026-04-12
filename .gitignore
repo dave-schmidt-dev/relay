@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Environment
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Relay project-local data (created per-project, not in this repo)
+.relay/
+
+# Debug captures
+debug/
+
+# Plans (working documents, not shipped)
+/plans/
+
+# Coverage
+coverage/
+
+# TypeScript
+*.tsbuildinfo
