@@ -11,15 +11,21 @@ Exit criteria:
 1. Repo is clean, tooling works, all three CLIs are documented.
 2. Golden files exist for each provider's task output format AND usage probe output.
 
-- [ ] TASK-001: Create clean repo with src/ structure, pnpm, TypeScript, vitest, eslint, prettier
+- [ ] TASK-001: Create clean repo with src/ structure, pnpm, TypeScript, vitest, eslint, prettier, knip
   - spec: Quality And Process Requirements
-  - test: src/core/__tests__/smoke.test.ts (project builds and lints)
+  - test: src/core/__tests__/smoke.test.ts (project builds, lints, and knip runs without error)
   - status: todo
+
+- [ ] TASK-001a: Configure git hooks via husky — pre-commit (lint + format + typecheck + knip warnings) and pre-push (full test suite)
+  - spec: Quality And Process Requirements items 9-10
+  - test: verify hooks fire on commit and push; knip findings do not block commit; test failures block push
+  - status: todo
+  - note: knip runs in pre-commit but exits 0 on findings (warnings only). This allows pre-declaring method stubs and types during incremental build without blocking commits. Pre-push requires vitest run to pass.
 
 - [ ] TASK-002: Create README.md, HISTORY.md, LICENSE (MIT)
   - spec: Quality And Process Requirements
   - test: verify files exist and contain required sections
-  - status: todo
+  - status: done (completed during project scaffold)
 
 - [ ] TASK-003: Validate Claude CLI behavior — document task flags, output format, exit codes, rate-limit patterns, AND probe `/usage` output format
   - spec: REQ-004, REQ-013, REQ-014

@@ -449,10 +449,15 @@ Acceptance criteria:
 1. Package manager: `pnpm`
 2. Project structure: single `src/` directory with logical subdirectories (not a monorepo)
 3. Lint and format: `eslint`, `prettier`, `tsc --noEmit`
-4. Tests: `vitest` for unit and integration tests
-5. No Playwright e2e tests in v1. Manual UI testing is sufficient.
-6. Minimum supported environment: macOS (Apple Silicon)
-7. All tests use `.test.ts` or `.spec.ts` extensions
+4. Dead code detection: `knip` — reports unused exports, files, dependencies, and types
+5. Tests: `vitest` for unit and integration tests
+6. No Playwright e2e tests in v1. Manual UI testing is sufficient.
+7. Minimum supported environment: macOS (Apple Silicon)
+8. All tests use `.test.ts` or `.spec.ts` extensions
+9. Git hooks via `husky`:
+   - **pre-commit**: `eslint`, `prettier --check`, `tsc --noEmit`, `knip` (warnings only — exit 0 on knip findings so pre-declared stubs don't block commits during incremental development)
+   - **pre-push**: full `vitest run` (all tests must pass before code reaches remote)
+10. CI parity: git hooks run the exact same commands as CI. No subset, no approximation.
 
 ## Decision Log
 
