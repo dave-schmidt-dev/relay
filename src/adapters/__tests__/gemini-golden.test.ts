@@ -174,7 +174,7 @@ describe("gemini golden files: stats-probe-clean.txt", () => {
     const raw = readFixture("stats-probe-clean.txt");
     const match = /Logged in with Google \(([^)]+)\)/.exec(raw);
     expect(match).not.toBeNull();
-    expect(match?.[1]).toBe("david.m.schmidty@gmail.com");
+    expect(match?.[1]).toBe("user@example.com");
   });
 });
 

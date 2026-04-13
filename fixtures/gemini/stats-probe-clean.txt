@@ -3,7 +3,7 @@
 │  Session Stats                                                                                                                                │
 │  Interaction Summary                                                                                                                          │
 │  Session ID:                 0c141004-81ef-41e0-830e-f445518acc49                                                                             │
-│  Auth Method:                Logged in with Google (david.m.schmidty@gmail.com)                                                               │
+│  Auth Method:                Logged in with Google (user@example.com)                                                               │
 │  Tier:                       Gemini Code Assist in Google One AI Pro                                                                          │
 │  Auto (Gemini 3) Usage                                                                                                                        │
 │  Model                       Reqs             Usage remaining                                                                                 │

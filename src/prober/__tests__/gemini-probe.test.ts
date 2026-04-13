@@ -54,8 +54,8 @@ describe("parseGeminiStats: clean fixture (stats-probe-clean.txt)", () => {
   });
 
   it("accountEmail is extracted from auth line", () => {
-    // Fixture: "Logged in with Google (david.m.schmidty@gmail.com)"
-    expect(snapshot.accountEmail).toBe("david.m.schmidty@gmail.com");
+    // Fixture: "Logged in with Google (user@example.com)"
+    expect(snapshot.accountEmail).toBe("user@example.com");
   });
 
   it("accountTier is extracted", () => {

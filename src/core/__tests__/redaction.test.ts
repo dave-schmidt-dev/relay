@@ -67,7 +67,7 @@ describe("redact — OpenAI API keys", () => {
 
 describe("redact — Google / GCP API keys", () => {
   it("redacts a key starting with AIza", () => {
-    const key = "AIzaSyD-9tSrke72CkdnnRBHkMZ9ABCDEFGHijk";
+    const key = "AIzaXXXX_FAKE_TEST_KEY_FOR_UNIT_TESTS_ONLY";
     const result = redact(`GOOGLE_API_KEY=${key}`);
     expect(result).not.toContain(key);
     expect(result).toContain("[REDACTED]");
@@ -120,7 +120,7 @@ describe("redact — preserves normal text", () => {
 describe("redact — multiple keys in the same string", () => {
   it("redacts an Anthropic key and a Google key in the same string", () => {
     const ant = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz12345";
-    const gcp = "AIzaSyD-9tSrke72CkdnnRBHkMZ9ABCDEFGHijk";
+    const gcp = "AIzaXXXX_FAKE_TEST_KEY_FOR_UNIT_TESTS_ONLY";
     const result = redact(`ant=${ant} gcp=${gcp}`);
     expect(result).not.toContain(ant);
     expect(result).not.toContain(gcp);

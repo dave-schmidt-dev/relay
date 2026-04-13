@@ -174,7 +174,7 @@ export function parseGeminiStats(text: string): GeminiUsageSnapshot {
 
     // -----------------------------------------------------------------------
     // Auth Method line — extract email from parenthesized portion.
-    // e.g. "Auth Method:  Logged in with Google (david.m.schmidty@gmail.com)"
+    // e.g. "Auth Method:  Logged in with Google (user@example.com)"
     // -----------------------------------------------------------------------
     if (/auth\s*method/i.test(trimmed) && snapshot.accountEmail === null) {
       const email = extractEmail(trimmed);
