@@ -17,3 +17,13 @@
 - Prior art: ai_monitor project provides working Python implementation of PTY-based usage probing for all three providers
 - Market research: No existing tool does task-aware usage-optimized routing for CLI subscriptions. CLIProxyAPI routes HTTP API requests; Relay routes semantic tasks.
 - Repo scaffolded, spec and tasks committed
+
+## 2026-04-12 — Phase 0 complete
+
+- Tooling scaffold: pnpm, TypeScript (ES2024/NodeNext strict), vitest, eslint flat config, prettier, husky hooks, knip
+- Golden files for all three provider CLIs: Claude, Codex, Gemini
+- Task execution samples (text + JSON/JSONL) and usage probe captures from ai_monitor test fixtures
+- 151 tests passing across 4 test files
+- Committed as single phase-boundary commit (0ba605f)
+- Discovery: Gemini CLI loads GEMINI.md from project root automatically (like CLAUDE.md for Claude). This gives us a persistent context injection point for Gemini-dispatched tasks without bloating -p prompts. Should create project-level GEMINI.md with coding standards.
+- Experiment: Testing Gemini Pro (-m pro) as implementation agent and Gemini Flash (-m flash) as review agent, with Opus orchestrating. Goal: distribute subscription credits across providers during development.

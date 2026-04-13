@@ -19,7 +19,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "knip": "knip",
-    "prepare": "husky"
+    "prepare": "husky",
+    "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper 2>/dev/null || true"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
@@ -33,5 +34,8 @@
     "typescript": "^5.8.0",
     "typescript-eslint": "^8.0.0",
     "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0"
   }
 }
