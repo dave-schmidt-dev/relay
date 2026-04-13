@@ -34,7 +34,7 @@ Relay is a browser-based workspace that tracks your AI subscription usage in rea
 
 ## Status
 
-**Phase 1 complete.** Core engine is implemented and tested. Context assembly (Phase 2), web UI (Phase 3), and hardening (Phase 4) remain.
+**Phase 3 complete.** Core engine, context assembly, server API, and browser workspace are implemented. Phase 4 hardening, export, and filtering remain.
 
 ### What's Built
 
@@ -44,11 +44,12 @@ Relay is a browser-based workspace that tracks your AI subscription usage in rea
 - **Usage probing**: ANSI stripping, persistent PTY sessions via node-pty, per-provider parsers (Claude `/usage`, Codex `/status`, Gemini `/stats`), probe orchestrator with caching and stale detection
 - **Routing**: Task classifier (keyword/pattern heuristics), usage-aware provider router with affinity rankings and capacity weighting
 - **Context Assembly & Handoffs**: File snapshotting, context pre-population, AGENTS.md memory health checks, handoff persistence, and provider-specific prompt formatting
+- **Server & Workspace**: REST API, WebSocket run streaming, split-pane source/dispatch workspace, raw/rendered output toggle, handoff preview, project file browser
 - **Safety**: Secret redaction (API key patterns, blocked file attachments), cancellation (SIGTERM → SIGKILL), orphan detection on startup
 
 ### Test Coverage
 
-624 tests across 23 test files. All pass in ~10 seconds.
+296 tests across 34 test files. All pass in about 10-11 seconds.
 
 ## Prerequisites
 
@@ -63,9 +64,10 @@ Relay is a browser-based workspace that tracks your AI subscription usage in rea
 git clone https://github.com/dave-schmidt-dev/relay.git
 cd relay
 pnpm install
-pnpm test        # 624 tests
+pnpm test        # 296 tests
 pnpm lint        # eslint
 pnpm typecheck   # tsc --noEmit
+pnpm build:web   # production SPA build
 ```
 
 ## Architecture

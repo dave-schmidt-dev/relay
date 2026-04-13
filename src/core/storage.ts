@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import { AffinityRankings, DEFAULT_AFFINITY_RANKINGS } from "./provider-router.js";
 
 /**
  * Configuration options for the Relay project.
@@ -10,7 +11,7 @@ export interface RelayConfig {
   maxConcurrentRuns: number;
   defaultPort: number;
   envAllowlist: string[];
-  affinityRankings: Record<string, string[]>;
+  affinityRankings: AffinityRankings;
   classificationConfidenceThreshold: number;
   debugMode: boolean;
 }
@@ -23,7 +24,7 @@ export const DEFAULT_CONFIG: RelayConfig = {
   maxConcurrentRuns: 3,
   defaultPort: 3000,
   envAllowlist: [],
-  affinityRankings: {},
+  affinityRankings: DEFAULT_AFFINITY_RANKINGS,
   classificationConfidenceThreshold: 0.6,
   debugMode: false,
 };

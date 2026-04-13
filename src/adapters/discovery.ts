@@ -49,3 +49,18 @@ export async function discoverProviders(): Promise<DiscoveredProvider[]> {
 
   return results.filter((r): r is DiscoveredProvider => r !== null);
 }
+
+/**
+ * Get the version string for a provider CLI by running it with --version.
+ *
+ * This IS intended to be called at run-time, unlike findExecutable.
+ */
+export async function getProviderVersion(provider: Provider): Promise<string> {
+  try {
+    // Most providers support --version
+    const { stdout } = await execFile(provider, ["--version"]);
+    return stdout.trim() || "unknown";
+  } catch {
+    return "unknown";
+  }
+}

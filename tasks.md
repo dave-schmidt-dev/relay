@@ -4,6 +4,41 @@ This backlog is authoritative for v1 implementation planning. Every task maps to
 
 Status key: todo | in_progress | done | blocked
 
+## Planning Principle
+
+Accurate code is the bare minimum, not the end goal.
+
+The goal of this project is reliable, auditable, maintainable workflow software that works end to end under real use, survives validation, and can be safely extended or handed off between providers. "It compiles" or "the feature appears to work once" is not sufficient for completion.
+
+When implementing any remaining task, optimize for:
+
+- spec fidelity, not just plausible behavior
+- integrated workflow correctness, not isolated component correctness
+- regression resistance through tests and validation
+- documentation and task state that stay aligned with reality
+- work that another provider or future session can pick up without guesswork
+
+## Completion Contract For All Remaining Work
+
+All unfinished tasks and phases inherit this definition of done. A task is not complete, a phase is not complete, and no commit should be made on the basis of that work unless all applicable items below are satisfied.
+
+Required validation commands:
+
+- `pnpm typecheck`
+- `pnpm lint`
+- `pnpm test`
+- `pnpm build:web`
+
+Required completion rules:
+
+- All required validation commands must exit `0`.
+- `pnpm build:web` must be clean enough to trust as a gate; warnings that indicate broken styling or broken build output count as failures and must be fixed before completion.
+- New or changed behavior must have tests added or updated in the same task when the behavior is testable. Manual verification is a supplement, not a substitute, for automated coverage.
+- API, WebSocket, and UI contract changes must be updated consistently across server, client, tests, and docs in the same task.
+- Import-time side effects that break tests or make modules unsafe to import are not acceptable.
+- `tasks.md` and `HISTORY.md` must be updated at phase boundaries and whenever completion status materially changes.
+- Do not mark a task `done`, do not claim completion, and do not commit solely on feature appearance if any gate above is still failing.
+
 ## Phase 0: Bootstrap And Provider Validation (DONE)
 
 Exit criteria: MET
@@ -122,68 +157,79 @@ Exit criteria:
   - test: src/core/__tests__/memory-health.test.ts
   - status: done
 
-## Phase 3: Server And Web UI
+## Phase 3: Server And Web UI (DONE)
 
-Exit criteria:
+Exit criteria: MET
 
 1. Browser workspace supports the full core workflow: compose, dispatch, watch, review.
 2. Usage dashboard is visible and accurate.
 3. WebSocket streaming works for active runs.
+4. `pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm build:web` all pass for the integrated Phase 3 implementation.
+5. Phase 3 behavior is covered by automated tests where practical, including server route coverage and WebSocket streaming coverage. Manual browser verification does not replace these tests.
 
-- [ ] TASK-026: Implement HTTP server with REST API for runs, handoffs, usage, and project state
+Phase 3 specific gate:
+
+- `src/server/__tests__/api-routes.test.ts` exists and covers the REST API behavior.
+- `src/server/__tests__/websocket-streaming.test.ts` exists and covers live run output subscription/streaming behavior.
+- UI work is complete with intended styling and without known broken-build warnings.
+
+- [x] TASK-025a: Setup Vite + React frontend environment (Vite, React, Tailwind, dependencies)
+  - status: done
+
+- [x] TASK-026: Implement HTTP server with REST API for runs, handoffs, usage, and project state
   - spec: REQ-012
   - test: src/server/__tests__/api-routes.test.ts
-  - status: todo
+  - status: done
 
-- [ ] TASK-027: Implement WebSocket server for live run output streaming
+- [x] TASK-027: Implement WebSocket server for live run output streaming
   - spec: REQ-007, REQ-012
   - test: src/server/__tests__/websocket-streaming.test.ts
-  - status: todo
+  - status: done
 
-- [ ] TASK-028: Build usage dashboard component
+- [x] TASK-028: Build usage dashboard component
   - spec: REQ-001
   - test: manual verification
-  - status: todo
+  - status: done
 
-- [ ] TASK-029: Build prompt composer component
+- [x] TASK-029: Build prompt composer component
   - spec: REQ-004, REQ-002
   - test: manual verification
-  - status: todo
+  - status: done
 
-- [ ] TASK-030: Build split-pane workspace
+- [x] TASK-030: Build split-pane workspace
   - spec: REQ-007
   - test: manual verification
-  - status: todo
+  - status: done
 
-- [ ] TASK-031: Build run output renderer (streaming Markdown)
+- [x] TASK-031: Build run output renderer (streaming Markdown)
   - spec: REQ-007
   - test: manual verification
-  - status: todo
+  - status: done
 
-- [ ] TASK-032: Build context assembly UI
+- [x] TASK-032: Build context assembly UI
   - spec: REQ-006
   - test: manual verification
-  - status: todo
+  - status: done
 
-- [ ] TASK-033: Build handoff dispatch flow
+- [x] TASK-033: Build handoff dispatch flow
   - spec: REQ-006, REQ-002
   - test: manual verification
-  - status: todo
+  - status: done
 
-- [ ] TASK-034: Build run detail view
+- [x] TASK-034: Build run detail view
   - spec: REQ-009
   - test: manual verification
-  - status: todo
+  - status: done
 
-- [ ] TASK-035: Build project timeline view
+- [x] TASK-035: Build project timeline view
   - spec: REQ-009
   - test: manual verification
-  - status: todo
+  - status: done
 
-- [ ] TASK-036: Build memory health indicator
+- [x] TASK-036: Build memory health indicator
   - spec: REQ-008
   - test: manual verification
-  - status: todo
+  - status: done
 
 ## Phase 4: Search, Export, And Hardening
 
@@ -192,6 +238,13 @@ Exit criteria:
 1. Runs are filterable by metadata.
 2. Markdown export works.
 3. Integration test covers full plan → handoff → implement flow.
+4. `pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm build:web` all pass after hardening work is integrated.
+5. Hardening tasks include regression coverage for the behavior they introduce or modify.
+
+Phase 4 specific gate:
+
+- Filtering, export, concurrency, and integration behavior must land with automated tests in the paths listed on the tasks below.
+- Export and hardening work is not complete if it only works in ad hoc manual runs and is not represented in the automated suite.
 
 - [ ] TASK-037: Implement run filtering (by provider, task type, status)
   - spec: REQ-015

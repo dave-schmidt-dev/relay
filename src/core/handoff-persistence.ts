@@ -15,6 +15,10 @@ function getHandoffJsonPath(projectRoot: string, handoffId: string): string {
   return path.join(getHandoffDir(projectRoot, handoffId), "handoff.json");
 }
 
+function getPromptPreviewPath(projectRoot: string, handoffId: string): string {
+  return path.join(getHandoffDir(projectRoot, handoffId), "prompt-preview.md");
+}
+
 function getArtifactsDir(projectRoot: string, handoffId: string): string {
   return path.join(getHandoffDir(projectRoot, handoffId), "artifacts");
 }
@@ -33,11 +37,18 @@ export async function saveHandoff(projectRoot: string, handoff: Handoff): Promis
   const dir = getHandoffDir(projectRoot, handoff.handoff_id);
   await fs.mkdir(dir, { recursive: true });
 
-  await fs.writeFile(
-    getHandoffJsonPath(projectRoot, handoff.handoff_id),
-    JSON.stringify(handoff, null, 2),
-    "utf-8",
-  );
+  await Promise.all([
+    fs.writeFile(
+      getHandoffJsonPath(projectRoot, handoff.handoff_id),
+      JSON.stringify(handoff, null, 2),
+      "utf-8",
+    ),
+    fs.writeFile(
+      getPromptPreviewPath(projectRoot, handoff.handoff_id),
+      handoff.template_prompt,
+      "utf-8",
+    ),
+  ]);
 }
 
 /**

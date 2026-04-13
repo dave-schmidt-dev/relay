@@ -34,11 +34,11 @@ export interface CreateRunParams {
  */
 export interface TransitionDetails {
   /** PID of the launched process (queued → running). */
-  pid?: number;
+  pid?: number | undefined;
   /** Exit code from the process (running → succeeded | failed). */
-  exit_code?: number;
+  exit_code?: number | undefined;
   /** Human-readable reason for an abnormal exit (running → failed | canceled). */
-  exit_reason?: string;
+  exit_reason?: string | undefined;
 }
 
 /**

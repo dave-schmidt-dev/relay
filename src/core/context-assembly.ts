@@ -19,6 +19,7 @@ export interface FileInput {
 export interface ContextAssemblyInput {
   projectRoot: string;
   handoffId?: string;
+  includeMemory?: boolean;
   excerpts?: ExcerptInput[];
   files?: FileInput[];
 }
@@ -33,36 +34,38 @@ export async function assembleContext(input: ContextAssemblyInput): Promise<Cont
   const items: ContextItem[] = [];
 
   // 1. Memory (AGENTS.md)
-  const agentsPath = path.join(input.projectRoot, "AGENTS.md");
-  try {
-    const content = await fs.readFile(agentsPath);
-    const hash = crypto.createHash("sha256").update(content).digest("hex");
-
-    const snapshotsDir = path.join(input.projectRoot, ".relay", "memory-snapshots");
-    await fs.mkdir(snapshotsDir, { recursive: true });
-
-    const snapshotPath = path.join(snapshotsDir, `${hash}.md`);
+  if (input.includeMemory !== false) {
+    const agentsPath = path.join(input.projectRoot, "AGENTS.md");
     try {
-      await fs.access(snapshotPath);
-    } catch {
-      await fs.writeFile(snapshotPath, content);
-    }
+      const content = await fs.readFile(agentsPath);
+      const hash = crypto.createHash("sha256").update(content).digest("hex");
 
-    const content_ref = path.posix.join(".relay", "memory-snapshots", `${hash}.md`);
-    items.push({
-      type: "memory",
-      content: { hash, content_ref },
-    });
-  } catch (err: unknown) {
-    if (
-      typeof err === "object" &&
-      err !== null &&
-      "code" in err &&
-      (err as { code: unknown }).code === "ENOENT"
-    ) {
-      // ignore
-    } else {
-      throw err;
+      const snapshotsDir = path.join(input.projectRoot, ".relay", "memory-snapshots");
+      await fs.mkdir(snapshotsDir, { recursive: true });
+
+      const snapshotPath = path.join(snapshotsDir, `${hash}.md`);
+      try {
+        await fs.access(snapshotPath);
+      } catch {
+        await fs.writeFile(snapshotPath, content);
+      }
+
+      const content_ref = path.posix.join(".relay", "memory-snapshots", `${hash}.md`);
+      items.push({
+        type: "memory",
+        content: { hash, content_ref },
+      });
+    } catch (err: unknown) {
+      if (
+        typeof err === "object" &&
+        err !== null &&
+        "code" in err &&
+        (err as { code: unknown }).code === "ENOENT"
+      ) {
+        // ignore
+      } else {
+        throw err;
+      }
     }
   }
 

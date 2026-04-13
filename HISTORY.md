@@ -52,3 +52,33 @@
 - Context pre-population completed, resolving memory, excerpts, and attached files.
 - `buildHandoffPrompt` logic implemented for Claude, Codex, and Gemini adapters using provider-specific formatting.
 - Resolved strict TypeScript linting and type-safety errors. All tests passing and quality gates green.
+
+## 2026-04-13 — Phase 3 complete
+
+- Server and Web UI implemented: Full browser-based workspace for multi-provider workflow.
+- Split-pane workspace implemented according to REQ-007, supporting Source Run (left) and Dispatched Run/Composer (right) side-by-side.
+- Context assembly UI enhanced: Operator can select excerpts from run output (with raw/rendered toggle) and attach project files.
+- REST API completed and verified with automated tests in `src/server/__tests__/api-routes.test.ts`.
+- WebSocket streaming implemented and verified with automated tests in `src/server/__tests__/websocket-streaming.test.ts`.
+- Usage dashboard integrated into workspace sidebar for real-time quota monitoring.
+- All validation gates (typecheck, lint, test, build:web) passing.
+- 293 tests passing across 34 test files.
+
+## 2026-04-13 — Planning contract tightened for external agents
+
+- Updated `tasks.md` to make the completion contract explicit for all remaining work instead of assuming providers will infer repo standards from phase titles alone.
+- Added a global definition of done for unfinished tasks: `pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm build:web` must pass before work is considered complete.
+- Added phase-specific gating language for Phase 3 and Phase 4, including required automated coverage for API/WebSocket behavior and a rule that manual verification does not replace tests.
+- Clarified that broken build warnings, contract mismatches, import-time side effects, and missing documentation updates block completion.
+- Added an explicit planning principle: accurate code is the baseline, but the actual target is reliable, spec-faithful, maintainable end-to-end behavior that can survive handoff and future work without hidden assumptions.
+
+## 2026-04-13 — Phase 3 finalized
+
+- Closed the remaining Phase 3 workflow gaps after the initial browser/server pass: handoff preview is now a first-class server/UI flow instead of a documentation claim.
+- Added structured handoff preview/build support on the server, including prompt preview generation, prompt size estimates, raw run log retrieval, and project-rooted file browsing.
+- Persisted `prompt-preview.md` alongside each handoff so the generated dispatch prompt is auditable on disk.
+- Reworked the browser workspace to support full-width source or dispatch views in addition to the split layout, matching the spec's pane-collapse behavior.
+- Reworked run output review so excerpts are captured from raw stdout with byte offsets, while still allowing rendered Markdown review of the same run.
+- Reworked the dispatch pane so selected excerpts, attached project files, operator notes, and AGENTS.md memory flow through structured handoff context instead of being stuffed into ad hoc prompt text.
+- Expanded REST API coverage and kept WebSocket streaming coverage in place; the suite now passes at 296 tests across 34 files.
+- Updated README/task state to match the actual shipped Phase 3 state rather than the earlier stale placeholders.
