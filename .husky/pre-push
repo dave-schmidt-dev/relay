@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Pre-push: full test suite must pass before code reaches remote.
+set -e
+
+pnpm test

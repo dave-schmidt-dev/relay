@@ -1,0 +1,46 @@
+{
+  "version": "2.1.92",
+  "name": "claude",
+  "description": "Claude Code CLI",
+  "flags": {
+    "task": "-p",
+    "output_format": "--output-format",
+    "output_format_values": ["text", "json", "stream-json"],
+    "model": "--model",
+    "system_prompt": "--system-prompt",
+    "max_turns": "--max-turns",
+    "verbose": "--verbose"
+  },
+  "exit_codes": {
+    "0": "success",
+    "1": "error (general failure, model error, or non-zero exit from tool)",
+    "2": "usage error (bad flags or arguments)"
+  },
+  "output_format_default": "text",
+  "json_output_fields": [
+    "type",
+    "subtype",
+    "is_error",
+    "duration_ms",
+    "duration_api_ms",
+    "num_turns",
+    "result",
+    "stop_reason",
+    "session_id",
+    "total_cost_usd",
+    "usage",
+    "modelUsage",
+    "permission_denials",
+    "terminal_reason",
+    "fast_mode_state"
+  ],
+  "usage_probe": {
+    "command": "/usage",
+    "mode": "interactive",
+    "notes": "Only available for Claude Max subscription plans. Outputs ANSI-escaped text. Rate limit may block the command."
+  },
+  "rate_limit_patterns": [
+    "Failed to load usage data: rate limited",
+    "/usage is only vilable for subscription plans"
+  ]
+}

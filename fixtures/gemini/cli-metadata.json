@@ -1,0 +1,32 @@
+{
+  "name": "gemini",
+  "version": "0.37.1",
+  "executable": "gemini",
+  "taskCommand": ["gemini", "-p"],
+  "taskFlags": {
+    "-m": "model selection",
+    "-o": "output format (text, json, stream-json)",
+    "-p": "non-interactive prompt (required for headless mode)",
+    "--approval-mode": "permission mode (default, auto_edit, yolo, plan)",
+    "-y": "auto-approve all actions (YOLO mode)",
+    "-s": "run in sandbox",
+    "-w": "create git worktree",
+    "-r": "resume previous session"
+  },
+  "outputFormats": ["text", "json", "stream-json"],
+  "exitCodes": {
+    "0": "success",
+    "1": "general error"
+  },
+  "probeCommand": "/stats",
+  "probeMethod": "pty",
+  "experimentalProbeMethod": "internal",
+  "rateLimitPatterns": [
+    "capacity-related errors",
+    "rate limit",
+    "quota exceeded"
+  ],
+  "envVars": [],
+  "authMethod": "google-oauth",
+  "models": ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-3-flash-preview", "gemini-3.1-pro-preview"]
+}

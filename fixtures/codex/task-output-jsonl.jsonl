@@ -1,0 +1,3 @@
+{"type":"message","role":"system","content":"Starting session..."}
+{"type":"message","role":"assistant","content":"Hello from Codex."}
+{"type":"session_end","exit_code":0}

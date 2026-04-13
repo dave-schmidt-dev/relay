@@ -1,0 +1,8 @@
+Settings: StatusConfig Usage (←/→ or tab to cycle)
+Current session · Resets 10pm (America/New_York)████████████████
+70%used
+
+Currentweek(allmodels)·ResetsMar17at4pm
+(America/New_York)
+████████████████
+48%used

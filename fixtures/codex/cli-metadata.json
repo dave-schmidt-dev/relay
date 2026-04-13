@@ -1,0 +1,27 @@
+{
+  "name": "codex",
+  "version": "0.120.0",
+  "executable": "codex",
+  "taskCommand": ["codex", "exec"],
+  "taskFlags": {
+    "-m": "model selection",
+    "--skip-git-repo-check": "allow running outside git repo",
+    "--json": "JSONL output format",
+    "-o": "write last message to file",
+    "-s": "sandbox mode",
+    "--full-auto": "auto-approve with sandbox",
+    "-C": "working directory"
+  },
+  "outputFormats": ["text", "jsonl"],
+  "exitCodes": {
+    "0": "success",
+    "1": "general error"
+  },
+  "probeCommand": "/status",
+  "rateLimitPatterns": [
+    "rate limit",
+    "too many requests",
+    "data not available yet"
+  ],
+  "envVars": ["OPENAI_API_KEY"]
+}

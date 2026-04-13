@@ -1,0 +1,10 @@
+Reading additional input from stdin...
+OpenAI Codex v0.120.0 (research preview)
+--------
+workdir: /Users/dave/Documents/Projects/relay
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR, /Users/dave/.codex/memories] (network access enabled)
+reasoning effort: xhigh
+reasoning summaries: none

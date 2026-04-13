@@ -1,0 +1,15 @@
+Settings: Account Usage
+Current session
+27% used
+Resets in 3h 02m
+
+Current week (all models)
+64% left
+Resets on Mar 17, 8:00AM
+
+Current week (Opus)
+18% used
+Resets on Mar 17, 8:00AM
+
+Account: dave@example.com
+Organization: Zero Delta LLC

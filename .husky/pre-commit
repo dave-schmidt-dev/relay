@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+# Pre-commit: lint, format check, typecheck, dead code detection.
+# knip exits 0 even on findings (warnings-only) so stubs don't block commits.
+set -e
+
+pnpm lint
+pnpm format:check
+pnpm typecheck
+pnpm knip || true

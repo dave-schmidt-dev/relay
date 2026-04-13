@@ -1,0 +1,4 @@
+│  5h limit:             [███████████████████░] 96% left   │
+│                        (resets 00:15 on 14 Mar)          │
+│  Weekly limit:         [██████████████████░░] 92% left   │
+│                        (resets 03:09 on 17 Mar)          │

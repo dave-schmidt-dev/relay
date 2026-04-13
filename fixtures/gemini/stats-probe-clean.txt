@@ -1,0 +1,14 @@
+/stats
+╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│  Session Stats                                                                                                                                │
+│  Interaction Summary                                                                                                                          │
+│  Session ID:                 0c141004-81ef-41e0-830e-f445518acc49                                                                             │
+│  Auth Method:                Logged in with Google (david.m.schmidty@gmail.com)                                                               │
+│  Tier:                       Gemini Code Assist in Google One AI Pro                                                                          │
+│  Auto (Gemini 3) Usage                                                                                                                        │
+│  Model                       Reqs             Usage remaining                                                                                 │
+│  gemini-2.5-flash               -     98.3% resets in 15h 36m                                                                                 │
+│  gemini-2.5-flash-lite          -     97.4% resets in 15h 36m                                                                                 │
+│  gemini-2.5-pro                 -     83.3% resets in 22h 23m                                                                                 │
+│  gemini-3-flash-preview         -     98.3% resets in 15h 36m                                                                                 │
+│  gemini-3.1-pro-preview         -     83.3% resets in 22h 23m                                                                                 │
