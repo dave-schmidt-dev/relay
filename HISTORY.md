@@ -27,3 +27,18 @@
 - Committed as single phase-boundary commit (0ba605f)
 - Discovery: Gemini CLI loads GEMINI.md from project root automatically (like CLAUDE.md for Claude). This gives us a persistent context injection point for Gemini-dispatched tasks without bloating -p prompts. Should create project-level GEMINI.md with coding standards.
 - Experiment: Testing Gemini Pro (-m pro) as implementation agent and Gemini Flash (-m flash) as review agent, with Opus orchestrating. Goal: distribute subscription credits across providers during development.
+
+## 2026-04-12 — Phase 1 complete
+
+- Core engine implemented: 19 tasks, 47 source files, 8,709 lines added
+- Orchestration model: Opus orchestrator dispatched Sonnet subagents for implementation and Haiku subagents for spec review. Per-task cycle: dispatch → implement → spec review → mark complete.
+- Gemini experiment result: Tested Gemini Pro (-p -m pro) as implementation agent for TASK-006 (storage init). Generated structurally sound code but needed 3 manual fixes (ESM import style, lint error, ESM mock pattern). Total time ~10 min vs ~3 min for Sonnet subagent. Conclusion: external CLIs as text generators aren't a substitute for tool-using subagents — the value requires tool access (file read/write, test execution).
+- Module breakdown:
+  - core/: types, run lifecycle state machine, subprocess runner, run persistence, storage init, task classifier, provider router, cancellation, orphan detection, secret redaction
+  - adapters/: ProviderAdapter interface, Claude/Codex/Gemini implementations, provider discovery
+  - prober/: ANSI stripping (ported from ai_monitor), PTY session manager (node-pty), Claude/Codex/Gemini probe parsers, probe orchestrator
+- node-pty added as the one native C++ dependency (usage probing requires PTY sessions)
+- Bug: GitHub secret scanner flagged a fake Google API key (AIzaSyD-...) in redaction tests and a real email in Gemini golden fixtures (copied from ai_monitor). Fixed by sanitizing test data.
+- Test count observation: 624 tests is high for Phase 1. Golden file tests (151) are over-atomized — checking individual JSON fields as separate cases. Future tasks should brief subagents to write fewer, more meaningful tests. Test refactoring deferred.
+- 624 tests passing across 23 test files, all quality gates green
+- Committed as phase-boundary commit (f2999ed), cleanup commit (6547cde)
