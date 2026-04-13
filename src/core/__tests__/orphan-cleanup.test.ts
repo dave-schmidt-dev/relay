@@ -79,48 +79,27 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe("cleanupOrphans", () => {
-  it("returns empty array when no runs exist", async () => {
-    const orphans = await cleanupOrphans(tmpDir);
-    expect(orphans).toEqual([]);
-  });
+  it("returns empty array when no runs exist and when .relay/runs/ does not exist", async () => {
+    expect(await cleanupOrphans(tmpDir)).toEqual([]);
 
-  it("returns empty array when .relay/runs/ does not exist", async () => {
     const bareDir = await fs.mkdtemp(path.join(os.tmpdir(), "relay-bare-"));
     try {
-      const orphans = await cleanupOrphans(bareDir);
-      expect(orphans).toEqual([]);
+      expect(await cleanupOrphans(bareDir)).toEqual([]);
     } finally {
       await fs.rm(bareDir, { recursive: true, force: true });
     }
   });
 
-  it("detects an orphaned run with a dead PID and returns its ID", async () => {
+  it("detects orphaned run with dead PID, marks it failed with exit_reason 'orphaned', and sets ended_at", async () => {
     const run = makeRun({ pid: DEAD_PID });
     await writeRunJson(tmpDir, run);
 
     const orphans = await cleanupOrphans(tmpDir);
-
     expect(orphans).toEqual([run.run_id]);
-  });
-
-  it("marks an orphaned run as failed with exit_reason 'orphaned'", async () => {
-    const run = makeRun({ pid: DEAD_PID });
-    await writeRunJson(tmpDir, run);
-
-    await cleanupOrphans(tmpDir);
 
     const updated = await readRunJson(tmpDir, run.run_id);
     expect(updated.status).toBe("failed");
     expect(updated.exit_reason).toBe("orphaned");
-  });
-
-  it("sets ended_at on the orphaned run", async () => {
-    const run = makeRun({ pid: DEAD_PID });
-    await writeRunJson(tmpDir, run);
-
-    await cleanupOrphans(tmpDir);
-
-    const updated = await readRunJson(tmpDir, run.run_id);
     expect(updated.ended_at).not.toBeNull();
   });
 
@@ -129,64 +108,44 @@ describe("cleanupOrphans", () => {
     await writeRunJson(tmpDir, run);
 
     const orphans = await cleanupOrphans(tmpDir);
-
     expect(orphans).toEqual([run.run_id]);
+
     const updated = await readRunJson(tmpDir, run.run_id);
     expect(updated.status).toBe("failed");
     expect(updated.exit_reason).toBe("orphaned");
   });
 
-  it("skips runs with status 'succeeded'", async () => {
-    const run = makeRun({ status: "succeeded", ended_at: new Date().toISOString(), exit_code: 0 });
-    await writeRunJson(tmpDir, run);
-
-    const orphans = await cleanupOrphans(tmpDir);
-
-    expect(orphans).toEqual([]);
-    const unchanged = await readRunJson(tmpDir, run.run_id);
-    expect(unchanged.status).toBe("succeeded");
-  });
-
-  it("skips runs with status 'failed'", async () => {
-    const run = makeRun({
+  it("skips runs in all terminal states (succeeded, failed, canceled, queued)", async () => {
+    const succeeded = makeRun({
+      status: "succeeded",
+      ended_at: new Date().toISOString(),
+      exit_code: 0,
+    });
+    const failed = makeRun({
       status: "failed",
       ended_at: new Date().toISOString(),
       exit_code: 1,
       exit_reason: "rate_limited",
     });
-    await writeRunJson(tmpDir, run);
-
-    const orphans = await cleanupOrphans(tmpDir);
-
-    expect(orphans).toEqual([]);
-    const unchanged = await readRunJson(tmpDir, run.run_id);
-    expect(unchanged.exit_reason).toBe("rate_limited");
-  });
-
-  it("skips runs with status 'canceled'", async () => {
-    const run = makeRun({
+    const canceled = makeRun({
       status: "canceled",
       ended_at: new Date().toISOString(),
       exit_reason: "canceled",
     });
-    await writeRunJson(tmpDir, run);
+    const queued = makeRun({ status: "queued", pid: null, started_at: null });
+
+    await writeRunJson(tmpDir, succeeded);
+    await writeRunJson(tmpDir, failed);
+    await writeRunJson(tmpDir, canceled);
+    await writeRunJson(tmpDir, queued);
 
     const orphans = await cleanupOrphans(tmpDir);
-
     expect(orphans).toEqual([]);
-    const unchanged = await readRunJson(tmpDir, run.run_id);
-    expect(unchanged.status).toBe("canceled");
-  });
 
-  it("skips runs with status 'queued'", async () => {
-    const run = makeRun({ status: "queued", pid: null, started_at: null });
-    await writeRunJson(tmpDir, run);
-
-    const orphans = await cleanupOrphans(tmpDir);
-
-    expect(orphans).toEqual([]);
-    const unchanged = await readRunJson(tmpDir, run.run_id);
-    expect(unchanged.status).toBe("queued");
+    expect((await readRunJson(tmpDir, succeeded.run_id)).status).toBe("succeeded");
+    expect((await readRunJson(tmpDir, failed.run_id)).exit_reason).toBe("rate_limited");
+    expect((await readRunJson(tmpDir, canceled.run_id)).status).toBe("canceled");
+    expect((await readRunJson(tmpDir, queued.run_id)).status).toBe("queued");
   });
 
   it("cleans up multiple orphaned runs", async () => {
@@ -198,7 +157,6 @@ describe("cleanupOrphans", () => {
     await writeRunJson(tmpDir, run3);
 
     const orphans = await cleanupOrphans(tmpDir);
-
     expect(orphans.sort()).toEqual([run1.run_id, run2.run_id, run3.run_id].sort());
 
     for (const run of [run1, run2, run3]) {
@@ -222,16 +180,10 @@ describe("cleanupOrphans", () => {
     await writeRunJson(tmpDir, queued);
 
     const orphans = await cleanupOrphans(tmpDir);
-
     expect(orphans).toEqual([orphan.run_id]);
 
-    const updatedOrphan = await readRunJson(tmpDir, orphan.run_id);
-    expect(updatedOrphan.status).toBe("failed");
-
-    const updatedSucceeded = await readRunJson(tmpDir, succeeded.run_id);
-    expect(updatedSucceeded.status).toBe("succeeded");
-
-    const updatedQueued = await readRunJson(tmpDir, queued.run_id);
-    expect(updatedQueued.status).toBe("queued");
+    expect((await readRunJson(tmpDir, orphan.run_id)).status).toBe("failed");
+    expect((await readRunJson(tmpDir, succeeded.run_id)).status).toBe("succeeded");
+    expect((await readRunJson(tmpDir, queued.run_id)).status).toBe("queued");
   });
 });

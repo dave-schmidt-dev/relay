@@ -56,64 +56,45 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe("persistNewRun", () => {
-  it("creates the run directory", async () => {
+  it("creates directory and all required files (run.json, events.jsonl, stdout.log, stderr.log, prompt.md)", async () => {
     const run = makeRun();
-    await persistNewRun(tmpDir, run, "# Prompt");
+    await persistNewRun(tmpDir, run, "# My prompt\nDo the thing.");
+
     const stat = await fs.stat(path.join(tmpDir, ".relay", "runs", run.run_id));
     expect(stat.isDirectory()).toBe(true);
-  });
 
-  it("returns the absolute path to the run directory", async () => {
-    const run = makeRun();
-    const dir = await persistNewRun(tmpDir, run, "# Prompt");
-    expect(dir).toBe(path.join(tmpDir, ".relay", "runs", run.run_id));
-  });
+    const jsonStat = await fs.stat(path.join(tmpDir, ".relay", "runs", run.run_id, "run.json"));
+    expect(jsonStat.isFile()).toBe(true);
 
-  it("writes run.json", async () => {
-    const run = makeRun();
-    await persistNewRun(tmpDir, run, "# Prompt");
-    const stat = await fs.stat(path.join(tmpDir, ".relay", "runs", run.run_id, "run.json"));
-    expect(stat.isFile()).toBe(true);
-  });
-
-  it("writes empty events.jsonl", async () => {
-    const run = makeRun();
-    await persistNewRun(tmpDir, run, "# Prompt");
-    const content = await fs.readFile(
+    const eventsContent = await fs.readFile(
       path.join(tmpDir, ".relay", "runs", run.run_id, "events.jsonl"),
       "utf-8",
     );
-    expect(content).toBe("");
-  });
+    expect(eventsContent).toBe("");
 
-  it("writes empty stdout.log", async () => {
-    const run = makeRun();
-    await persistNewRun(tmpDir, run, "# Prompt");
-    const content = await fs.readFile(
+    const stdoutContent = await fs.readFile(
       path.join(tmpDir, ".relay", "runs", run.run_id, "stdout.log"),
       "utf-8",
     );
-    expect(content).toBe("");
-  });
+    expect(stdoutContent).toBe("");
 
-  it("writes empty stderr.log", async () => {
-    const run = makeRun();
-    await persistNewRun(tmpDir, run, "# Prompt");
-    const content = await fs.readFile(
+    const stderrContent = await fs.readFile(
       path.join(tmpDir, ".relay", "runs", run.run_id, "stderr.log"),
       "utf-8",
     );
-    expect(content).toBe("");
-  });
+    expect(stderrContent).toBe("");
 
-  it("writes prompt.md with the provided content", async () => {
-    const run = makeRun();
-    await persistNewRun(tmpDir, run, "# My prompt\nDo the thing.");
-    const content = await fs.readFile(
+    const promptContent = await fs.readFile(
       path.join(tmpDir, ".relay", "runs", run.run_id, "prompt.md"),
       "utf-8",
     );
-    expect(content).toBe("# My prompt\nDo the thing.");
+    expect(promptContent).toBe("# My prompt\nDo the thing.");
+  });
+
+  it("returns the correct absolute path to the run directory", async () => {
+    const run = makeRun();
+    const dir = await persistNewRun(tmpDir, run, "# Prompt");
+    expect(dir).toBe(path.join(tmpDir, ".relay", "runs", run.run_id));
   });
 });
 
@@ -170,38 +151,32 @@ describe("updateRunMetadata", () => {
 // ---------------------------------------------------------------------------
 
 describe("appendEvent", () => {
-  it("appends a single event as a JSONL line", async () => {
+  it("appends a single event and multiple events as separate JSONL lines", async () => {
     const run = makeRun();
     await persistNewRun(tmpDir, run, "");
-
     const makeEvent = createEventFactory();
+
+    // Single event
     const event = makeEvent(run.run_id, "stdout", "hello");
     await appendEvent(tmpDir, run.run_id, event);
+    const afterOne = await fs.readFile(eventsFilePath(run.run_id), "utf-8");
+    const linesAfterOne = afterOne.trim().split("\n");
+    expect(linesAfterOne).toHaveLength(1);
+    expect(JSON.parse(linesAfterOne[0] ?? "")).toMatchObject({
+      run_id: run.run_id,
+      kind: "stdout",
+      payload: "hello",
+    });
 
-    const content = await fs.readFile(eventsFilePath(run.run_id), "utf-8");
-    const lines = content.trim().split("\n");
-    expect(lines).toHaveLength(1);
-    const parsed = lines.map((l) => JSON.parse(l) as unknown);
-    expect(parsed[0]).toMatchObject({ run_id: run.run_id, kind: "stdout", payload: "hello" });
-  });
-
-  it("appends multiple events as separate JSONL lines", async () => {
-    const run = makeRun();
-    await persistNewRun(tmpDir, run, "");
-
-    const makeEvent = createEventFactory();
-    const e1 = makeEvent(run.run_id, "stdout", "line one");
+    // Multiple events
     const e2 = makeEvent(run.run_id, "stderr", "error line");
     const e3 = makeEvent(run.run_id, "status_change", { from: "queued", to: "running" });
-
-    await appendEvent(tmpDir, run.run_id, e1);
     await appendEvent(tmpDir, run.run_id, e2);
     await appendEvent(tmpDir, run.run_id, e3);
-
-    const content = await fs.readFile(eventsFilePath(run.run_id), "utf-8");
-    const lines = content.trim().split("\n");
-    expect(lines).toHaveLength(3);
-    const parsed = lines.map((l) => JSON.parse(l) as unknown);
+    const afterThree = await fs.readFile(eventsFilePath(run.run_id), "utf-8");
+    const linesAfterThree = afterThree.trim().split("\n");
+    expect(linesAfterThree).toHaveLength(3);
+    const parsed = linesAfterThree.map((l) => JSON.parse(l) as unknown);
     expect(parsed[0]).toMatchObject({ kind: "stdout" });
     expect(parsed[1]).toMatchObject({ kind: "stderr" });
     expect(parsed[2]).toMatchObject({ kind: "status_change" });
@@ -212,35 +187,26 @@ describe("appendEvent", () => {
 // appendStdout / appendStderr
 // ---------------------------------------------------------------------------
 
-describe("appendStdout", () => {
-  it("appends text to stdout.log across multiple calls", async () => {
+describe("appendStdout and appendStderr", () => {
+  it("appends text to stdout.log and stderr.log independently across multiple calls", async () => {
     const run = makeRun();
     await persistNewRun(tmpDir, run, "");
 
     await appendStdout(tmpDir, run.run_id, "chunk one\n");
     await appendStdout(tmpDir, run.run_id, "chunk two\n");
-
-    const content = await fs.readFile(
+    const stdout = await fs.readFile(
       path.join(tmpDir, ".relay", "runs", run.run_id, "stdout.log"),
       "utf-8",
     );
-    expect(content).toBe("chunk one\nchunk two\n");
-  });
-});
-
-describe("appendStderr", () => {
-  it("appends text to stderr.log across multiple calls", async () => {
-    const run = makeRun();
-    await persistNewRun(tmpDir, run, "");
+    expect(stdout).toBe("chunk one\nchunk two\n");
 
     await appendStderr(tmpDir, run.run_id, "warn: something\n");
     await appendStderr(tmpDir, run.run_id, "error: bad thing\n");
-
-    const content = await fs.readFile(
+    const stderr = await fs.readFile(
       path.join(tmpDir, ".relay", "runs", run.run_id, "stderr.log"),
       "utf-8",
     );
-    expect(content).toBe("warn: something\nerror: bad thing\n");
+    expect(stderr).toBe("warn: something\nerror: bad thing\n");
   });
 });
 
@@ -267,11 +233,10 @@ describe("writeFinalOutput", () => {
 // ---------------------------------------------------------------------------
 
 describe("loadRun", () => {
-  it("reads back the persisted run with matching fields", async () => {
+  it("round-trip: reads back the persisted run and reflects updates after updateRunMetadata", async () => {
     const run = makeRun();
     await persistNewRun(tmpDir, run, "");
     const loaded = await loadRun(tmpDir, run.run_id);
-
     expect(loaded.run_id).toBe(run.run_id);
     expect(loaded.provider).toBe(run.provider);
     expect(loaded.status).toBe(run.status);
@@ -280,11 +245,7 @@ describe("loadRun", () => {
     expect(loaded.pid).toBeNull();
     expect(loaded.parent_run_id).toBeNull();
     expect(loaded.handoff_id).toBeNull();
-  });
 
-  it("reflects updated metadata after updateRunMetadata", async () => {
-    const run = makeRun();
-    await persistNewRun(tmpDir, run, "");
     const updated: Run = {
       ...run,
       status: "succeeded",
@@ -292,10 +253,9 @@ describe("loadRun", () => {
       exit_code: 0,
     };
     await updateRunMetadata(tmpDir, updated);
-
-    const loaded = await loadRun(tmpDir, run.run_id);
-    expect(loaded.status).toBe("succeeded");
-    expect(loaded.exit_code).toBe(0);
+    const reloaded = await loadRun(tmpDir, run.run_id);
+    expect(reloaded.status).toBe("succeeded");
+    expect(reloaded.exit_code).toBe(0);
   });
 
   it("throws when run does not exist", async () => {
@@ -308,16 +268,12 @@ describe("loadRun", () => {
 // ---------------------------------------------------------------------------
 
 describe("listRunIds", () => {
-  it("returns empty array when no runs exist", async () => {
-    const ids = await listRunIds(tmpDir);
-    expect(ids).toEqual([]);
-  });
+  it("returns empty array when no runs exist and returns all IDs after persisting multiple runs", async () => {
+    expect(await listRunIds(tmpDir)).toEqual([]);
 
-  it("returns all run IDs after persisting multiple runs", async () => {
     const run1 = makeRun();
     const run2 = makeRun();
     const run3 = makeRun();
-
     await persistNewRun(tmpDir, run1, "prompt 1");
     await persistNewRun(tmpDir, run2, "prompt 2");
     await persistNewRun(tmpDir, run3, "prompt 3");
@@ -330,8 +286,7 @@ describe("listRunIds", () => {
     // Fresh tmpDir without .relay/runs/ pre-created
     const bareDir = await fs.mkdtemp(path.join(os.tmpdir(), "relay-bare-"));
     try {
-      const ids = await listRunIds(bareDir);
-      expect(ids).toEqual([]);
+      expect(await listRunIds(bareDir)).toEqual([]);
     } finally {
       await fs.rm(bareDir, { recursive: true, force: true });
     }

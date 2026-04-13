@@ -37,6 +37,12 @@ describe("geminiAdapter.buildCommand", () => {
       "-o",
       "text",
     ]);
+    // executable-first, prompt position, and default text format are covered by the full assertion above
+    expect(argv[0]).toBe("gemini");
+    expect(argv[1]).toBe("-p");
+    expect(argv[2]).toBe("hello world");
+    expect(argv).toContain("-o");
+    expect(argv).toContain("text");
   });
 
   it("uses the specified model", () => {
@@ -49,39 +55,13 @@ describe("geminiAdapter.buildCommand", () => {
   });
 
   it("uses the specified output format", () => {
-    const argv = geminiAdapter.buildCommand("do something", {
-      outputFormat: "json",
-    });
+    const argv = geminiAdapter.buildCommand("do something", { outputFormat: "json" });
     expect(argv).toContain("-o");
     expect(argv).toContain("json");
   });
 
-  it("defaults to text output format", () => {
-    const argv = geminiAdapter.buildCommand("any prompt");
-    expect(argv).toContain("-o");
-    expect(argv).toContain("text");
-  });
-
-  it("executable is the first element", () => {
-    const argv = geminiAdapter.buildCommand("x");
-    expect(argv[0]).toBe("gemini");
-  });
-
-  it("second element is '-p'", () => {
-    const argv = geminiAdapter.buildCommand("x");
-    expect(argv[1]).toBe("-p");
-  });
-
-  it("prompt is the third element", () => {
-    const prompt = "the prompt text";
-    const argv = geminiAdapter.buildCommand(prompt);
-    expect(argv[2]).toBe(prompt);
-  });
-
   it("accepts stream-json as output format", () => {
-    const argv = geminiAdapter.buildCommand("stream me", {
-      outputFormat: "stream-json",
-    });
+    const argv = geminiAdapter.buildCommand("stream me", { outputFormat: "stream-json" });
     expect(argv).toContain("stream-json");
   });
 });
@@ -91,26 +71,16 @@ describe("geminiAdapter.buildCommand", () => {
 // ---------------------------------------------------------------------------
 
 describe("geminiAdapter.parseOutput — text format", () => {
-  it("returns trimmed text from the golden text fixture", () => {
+  it("returns trimmed text from the golden fixture, defaults to text, trims whitespace, and handles stream-json", () => {
     const raw = readFixture("task-output.txt");
-    const result = geminiAdapter.parseOutput(raw, "text");
-    expect(result).toBe("Hello from Gemini.");
-  });
-
-  it("defaults to text parsing when outputFormat is omitted", () => {
-    const raw = readFixture("task-output.txt");
-    const result = geminiAdapter.parseOutput(raw);
-    expect(result).toBe("Hello from Gemini.");
-  });
-
-  it("trims surrounding whitespace", () => {
-    const padded = "  Hello from Gemini.  \n";
-    expect(geminiAdapter.parseOutput(padded, "text")).toBe("Hello from Gemini.");
-  });
-
-  it("treats stream-json format the same as text (trimmed raw stdout)", () => {
-    const raw = "  some streamed output\n";
-    expect(geminiAdapter.parseOutput(raw, "stream-json")).toBe("some streamed output");
+    expect(geminiAdapter.parseOutput(raw, "text")).toBe("Hello from Gemini.");
+    expect(geminiAdapter.parseOutput(raw)).toBe("Hello from Gemini.");
+    expect(geminiAdapter.parseOutput("  Hello from Gemini.  \n", "text")).toBe(
+      "Hello from Gemini.",
+    );
+    expect(geminiAdapter.parseOutput("  some streamed output\n", "stream-json")).toBe(
+      "some streamed output",
+    );
   });
 });
 
@@ -119,14 +89,12 @@ describe("geminiAdapter.parseOutput — text format", () => {
 // ---------------------------------------------------------------------------
 
 describe("geminiAdapter.parseOutput — JSON format", () => {
-  it("parses valid JSON and returns trimmed stdout", () => {
+  it("parses valid JSON and returns a non-empty string, throws on invalid JSON", () => {
     const jsonOutput = JSON.stringify({ response: "Hello from Gemini." });
     const result = geminiAdapter.parseOutput(jsonOutput, "json");
     expect(typeof result).toBe("string");
     expect(result.length).toBeGreaterThan(0);
-  });
 
-  it("throws on completely invalid JSON", () => {
     expect(() => geminiAdapter.parseOutput("not json", "json")).toThrow();
   });
 });
@@ -136,66 +104,43 @@ describe("geminiAdapter.parseOutput — JSON format", () => {
 // ---------------------------------------------------------------------------
 
 describe("geminiAdapter.interpretExitCode", () => {
-  it("maps exit code 0 to success", () => {
-    const result = geminiAdapter.interpretExitCode(0);
-    expect(result.success).toBe(true);
-    expect(result.reason).toBe("success");
-  });
+  it("maps exit codes to the correct success/reason values", () => {
+    const ok = geminiAdapter.interpretExitCode(0);
+    expect(ok.success).toBe(true);
+    expect(ok.reason).toBe("success");
 
-  it("maps exit code 1 to general error", () => {
-    const result = geminiAdapter.interpretExitCode(1);
-    expect(result.success).toBe(false);
-    expect(result.reason).toMatch(/general error/i);
-  });
+    const general = geminiAdapter.interpretExitCode(1);
+    expect(general.success).toBe(false);
+    expect(general.reason).toMatch(/general error/i);
 
-  it("maps an unknown exit code to failure with code in reason", () => {
-    const result = geminiAdapter.interpretExitCode(99);
-    expect(result.success).toBe(false);
-    expect(result.reason).toContain("99");
-  });
+    const unknown = geminiAdapter.interpretExitCode(99);
+    expect(unknown.success).toBe(false);
+    expect(unknown.reason).toContain("99");
 
-  it("maps negative exit codes to failure", () => {
-    const result = geminiAdapter.interpretExitCode(-1);
-    expect(result.success).toBe(false);
+    const negative = geminiAdapter.interpretExitCode(-1);
+    expect(negative.success).toBe(false);
   });
 });
 
 // ---------------------------------------------------------------------------
-// detectRateLimit — golden fixture
+// detectRateLimit
 // ---------------------------------------------------------------------------
 
 describe("geminiAdapter.detectRateLimit", () => {
-  it("detects 'capacity-related errors' pattern", () => {
+  it("detects rate limit patterns (arbitrary text and case-insensitive)", () => {
     expect(
       geminiAdapter.detectRateLimit("Gemini returned capacity-related errors. Please retry."),
     ).toBe(true);
-  });
-
-  it("detects 'rate limit' in arbitrary text", () => {
     expect(geminiAdapter.detectRateLimit("You have hit the rate limit for this API")).toBe(true);
-  });
-
-  it("detects 'quota exceeded' in arbitrary text", () => {
     expect(geminiAdapter.detectRateLimit("Error: quota exceeded for this model")).toBe(true);
-  });
-
-  it("is case-insensitive for rate limit patterns", () => {
     expect(geminiAdapter.detectRateLimit("RATE LIMIT exceeded")).toBe(true);
     expect(geminiAdapter.detectRateLimit("Quota Exceeded")).toBe(true);
     expect(geminiAdapter.detectRateLimit("Capacity-Related Errors encountered")).toBe(true);
   });
 
-  it("returns false for normal task output", () => {
-    const raw = readFixture("task-output.txt");
-    expect(geminiAdapter.detectRateLimit(raw)).toBe(false);
-  });
-
-  it("returns false for the no-panel error fixture", () => {
-    const raw = readFixture("stats-error-no-panel.txt");
-    expect(geminiAdapter.detectRateLimit(raw)).toBe(false);
-  });
-
-  it("returns false for an empty string", () => {
+  it("returns false for non-rate-limit text", () => {
+    expect(geminiAdapter.detectRateLimit(readFixture("task-output.txt"))).toBe(false);
+    expect(geminiAdapter.detectRateLimit(readFixture("stats-error-no-panel.txt"))).toBe(false);
     expect(geminiAdapter.detectRateLimit("")).toBe(false);
   });
 });
@@ -205,27 +150,19 @@ describe("geminiAdapter.detectRateLimit", () => {
 // ---------------------------------------------------------------------------
 
 describe("geminiAdapter.buildHandoffPrompt", () => {
-  it("produces a markdown string with the task title as h1", () => {
-    const prompt = geminiAdapter.buildHandoffPrompt({
+  it("produces correct markdown: h1 title, h2 objective, context items included, empty context works, ordering preserved, starts with h1", () => {
+    // h1 title + h2 objective
+    const basic = geminiAdapter.buildHandoffPrompt({
       title: "Implement the widget",
       objective: "Build a robust widget module.",
       contextItems: [],
     });
-    expect(prompt).toContain("# Implement the widget");
-  });
+    expect(basic).toContain("# Implement the widget");
+    expect(basic).toContain("## Objective");
+    expect(basic).toContain("Build a robust widget module.");
 
-  it("includes the objective under an h2 heading", () => {
-    const prompt = geminiAdapter.buildHandoffPrompt({
-      title: "Task",
-      objective: "Do the thing correctly.",
-      contextItems: [],
-    });
-    expect(prompt).toContain("## Objective");
-    expect(prompt).toContain("Do the thing correctly.");
-  });
-
-  it("includes each context item as its own h2 section", () => {
-    const prompt = geminiAdapter.buildHandoffPrompt({
+    // context items included
+    const withContext = geminiAdapter.buildHandoffPrompt({
       title: "Task",
       objective: "Objective text.",
       contextItems: [
@@ -233,24 +170,22 @@ describe("geminiAdapter.buildHandoffPrompt", () => {
         { title: "Constraints", body: "No breaking changes." },
       ],
     });
-    expect(prompt).toContain("## Prior Work");
-    expect(prompt).toContain("Some prior work description.");
-    expect(prompt).toContain("## Constraints");
-    expect(prompt).toContain("No breaking changes.");
-  });
+    expect(withContext).toContain("## Prior Work");
+    expect(withContext).toContain("Some prior work description.");
+    expect(withContext).toContain("## Constraints");
+    expect(withContext).toContain("No breaking changes.");
 
-  it("produces a non-empty string even with no context items", () => {
-    const prompt = geminiAdapter.buildHandoffPrompt({
+    // empty context still produces a non-empty string
+    const minimal = geminiAdapter.buildHandoffPrompt({
       title: "Minimal",
       objective: "Just the objective.",
       contextItems: [],
     });
-    expect(typeof prompt).toBe("string");
-    expect(prompt.length).toBeGreaterThan(0);
-  });
+    expect(typeof minimal).toBe("string");
+    expect(minimal.length).toBeGreaterThan(0);
 
-  it("preserves ordering of context items", () => {
-    const prompt = geminiAdapter.buildHandoffPrompt({
+    // ordering preserved
+    const ordered = geminiAdapter.buildHandoffPrompt({
       title: "Order test",
       objective: "Check ordering.",
       contextItems: [
@@ -259,20 +194,19 @@ describe("geminiAdapter.buildHandoffPrompt", () => {
         { title: "Third", body: "Third body." },
       ],
     });
-    const firstPos = prompt.indexOf("## First");
-    const secondPos = prompt.indexOf("## Second");
-    const thirdPos = prompt.indexOf("## Third");
+    const firstPos = ordered.indexOf("## First");
+    const secondPos = ordered.indexOf("## Second");
+    const thirdPos = ordered.indexOf("## Third");
     expect(firstPos).toBeLessThan(secondPos);
     expect(secondPos).toBeLessThan(thirdPos);
-  });
 
-  it("returns a valid markdown string (starts with h1)", () => {
-    const prompt = geminiAdapter.buildHandoffPrompt({
+    // starts with h1
+    const startCheck = geminiAdapter.buildHandoffPrompt({
       title: "My Task",
       objective: "Some objective.",
       contextItems: [],
     });
-    expect(prompt.startsWith("# My Task")).toBe(true);
+    expect(startCheck.startsWith("# My Task")).toBe(true);
   });
 });
 
@@ -281,15 +215,9 @@ describe("geminiAdapter.buildHandoffPrompt", () => {
 // ---------------------------------------------------------------------------
 
 describe("geminiAdapter metadata", () => {
-  it("provider is 'gemini'", () => {
+  it("has correct provider, executable, and requiredEnvVars", () => {
     expect(geminiAdapter.provider).toBe("gemini");
-  });
-
-  it("executable is 'gemini'", () => {
     expect(geminiAdapter.executable).toBe("gemini");
-  });
-
-  it("requiredEnvVars is empty (uses Google OAuth, no API key)", () => {
     expect(geminiAdapter.requiredEnvVars).toEqual([]);
   });
 });

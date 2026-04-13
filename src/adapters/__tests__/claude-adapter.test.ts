@@ -29,6 +29,8 @@ describe("claudeAdapter.buildCommand", () => {
   it("produces correct argv with default output format", () => {
     const argv = claudeAdapter.buildCommand("hello world");
     expect(argv).toEqual(["claude", "-p", "hello world", "--output-format", "json"]);
+    expect(argv[0]).toBe("claude");
+    expect(argv).not.toContain("--model");
   });
 
   it("uses the specified output format", () => {
@@ -53,16 +55,6 @@ describe("claudeAdapter.buildCommand", () => {
       "claude-opus-4-6",
     ]);
   });
-
-  it("does not include --model when no model is given", () => {
-    const argv = claudeAdapter.buildCommand("simple task");
-    expect(argv).not.toContain("--model");
-  });
-
-  it("executable is the first element", () => {
-    const argv = claudeAdapter.buildCommand("x");
-    expect(argv[0]).toBe("claude");
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -70,26 +62,17 @@ describe("claudeAdapter.buildCommand", () => {
 // ---------------------------------------------------------------------------
 
 describe("claudeAdapter.parseOutput — JSON format", () => {
-  it("extracts .result from the golden JSON fixture", () => {
+  it("extracts .result from the golden JSON fixture and defaults to JSON when format is omitted", () => {
     const raw = readFixture("task-output.json");
-    const result = claudeAdapter.parseOutput(raw, "json");
-    expect(result).toBe("Hello from Claude.");
+    expect(claudeAdapter.parseOutput(raw, "json")).toBe("Hello from Claude.");
+    expect(claudeAdapter.parseOutput(raw)).toBe("Hello from Claude.");
   });
 
-  it("defaults to JSON parsing when outputFormat is omitted", () => {
-    const raw = readFixture("task-output.json");
-    const result = claudeAdapter.parseOutput(raw);
-    expect(result).toBe("Hello from Claude.");
-  });
-
-  it("throws when JSON output lacks a .result field", () => {
+  it("throws on missing .result field or completely invalid JSON", () => {
     const malformed = JSON.stringify({ type: "result", subtype: "success" });
     expect(() => claudeAdapter.parseOutput(malformed, "json")).toThrow(
       /missing or non-string \.result/,
     );
-  });
-
-  it("throws on completely invalid JSON", () => {
     expect(() => claudeAdapter.parseOutput("not json", "json")).toThrow();
   });
 });
@@ -99,20 +82,15 @@ describe("claudeAdapter.parseOutput — JSON format", () => {
 // ---------------------------------------------------------------------------
 
 describe("claudeAdapter.parseOutput — text format", () => {
-  it("returns trimmed text from the golden text fixture", () => {
+  it("returns trimmed text from the golden fixture, trims whitespace, and handles stream-json", () => {
     const raw = readFixture("task-output-text.txt");
-    const result = claudeAdapter.parseOutput(raw, "text");
-    expect(result).toBe("Hello from Claude.");
-  });
-
-  it("trims surrounding whitespace", () => {
-    const padded = "  Hello from Claude.  \n";
-    expect(claudeAdapter.parseOutput(padded, "text")).toBe("Hello from Claude.");
-  });
-
-  it("treats stream-json format the same as text (trimmed raw stdout)", () => {
-    const raw = "  some streamed output\n";
-    expect(claudeAdapter.parseOutput(raw, "stream-json")).toBe("some streamed output");
+    expect(claudeAdapter.parseOutput(raw, "text")).toBe("Hello from Claude.");
+    expect(claudeAdapter.parseOutput("  Hello from Claude.  \n", "text")).toBe(
+      "Hello from Claude.",
+    );
+    expect(claudeAdapter.parseOutput("  some streamed output\n", "stream-json")).toBe(
+      "some streamed output",
+    );
   });
 });
 
@@ -121,71 +99,44 @@ describe("claudeAdapter.parseOutput — text format", () => {
 // ---------------------------------------------------------------------------
 
 describe("claudeAdapter.interpretExitCode", () => {
-  it("maps exit code 0 to success", () => {
-    const result = claudeAdapter.interpretExitCode(0);
-    expect(result.success).toBe(true);
-    expect(result.reason).toBe("success");
-  });
+  it("maps exit codes to the correct success/reason values", () => {
+    const ok = claudeAdapter.interpretExitCode(0);
+    expect(ok.success).toBe(true);
+    expect(ok.reason).toBe("success");
 
-  it("maps exit code 1 to failure with a descriptive reason", () => {
-    const result = claudeAdapter.interpretExitCode(1);
-    expect(result.success).toBe(false);
-    expect(result.reason).toMatch(/general failure/i);
-  });
+    const general = claudeAdapter.interpretExitCode(1);
+    expect(general.success).toBe(false);
+    expect(general.reason).toMatch(/general failure/i);
 
-  it("maps exit code 2 to usage error", () => {
-    const result = claudeAdapter.interpretExitCode(2);
-    expect(result.success).toBe(false);
-    expect(result.reason).toMatch(/usage error/i);
-  });
+    const usage = claudeAdapter.interpretExitCode(2);
+    expect(usage.success).toBe(false);
+    expect(usage.reason).toMatch(/usage error/i);
 
-  it("maps an unknown exit code to failure with code in reason", () => {
-    const result = claudeAdapter.interpretExitCode(99);
-    expect(result.success).toBe(false);
-    expect(result.reason).toContain("99");
-  });
+    const unknown = claudeAdapter.interpretExitCode(99);
+    expect(unknown.success).toBe(false);
+    expect(unknown.reason).toContain("99");
 
-  it("maps negative exit codes to failure", () => {
-    const result = claudeAdapter.interpretExitCode(-1);
-    expect(result.success).toBe(false);
+    const negative = claudeAdapter.interpretExitCode(-1);
+    expect(negative.success).toBe(false);
   });
 });
 
 // ---------------------------------------------------------------------------
-// detectRateLimit — golden fixture
+// detectRateLimit
 // ---------------------------------------------------------------------------
 
 describe("claudeAdapter.detectRateLimit", () => {
-  it("detects rate limit pattern in the golden rate-limit fixture", () => {
-    const raw = readFixture("usage-error-rate-limit.txt");
-    expect(claudeAdapter.detectRateLimit(raw)).toBe(true);
-  });
-
-  it("detects the subscription-plan typo pattern", () => {
+  it("detects rate limit patterns (golden fixtures and arbitrary text)", () => {
+    expect(claudeAdapter.detectRateLimit(readFixture("usage-error-rate-limit.txt"))).toBe(true);
     // The real-world typo: "vilable" not "available"
-    const raw = readFixture("usage-error-subscription.txt");
-    expect(claudeAdapter.detectRateLimit(raw)).toBe(true);
-  });
-
-  it("detects 'rate_limit_error' in arbitrary text", () => {
+    expect(claudeAdapter.detectRateLimit(readFixture("usage-error-subscription.txt"))).toBe(true);
     expect(claudeAdapter.detectRateLimit("Error: rate_limit_error encountered")).toBe(true);
-  });
-
-  it("detects 'rate limit' (with space) in arbitrary text", () => {
     expect(claudeAdapter.detectRateLimit("You have hit the rate limit for this API")).toBe(true);
   });
 
-  it("returns false for normal task output", () => {
-    const raw = readFixture("task-output.json");
-    expect(claudeAdapter.detectRateLimit(raw)).toBe(false);
-  });
-
-  it("returns false for plain text output", () => {
-    const raw = readFixture("task-output-text.txt");
-    expect(claudeAdapter.detectRateLimit(raw)).toBe(false);
-  });
-
-  it("returns false for an empty string", () => {
+  it("returns false for non-rate-limit text", () => {
+    expect(claudeAdapter.detectRateLimit(readFixture("task-output.json"))).toBe(false);
+    expect(claudeAdapter.detectRateLimit(readFixture("task-output-text.txt"))).toBe(false);
     expect(claudeAdapter.detectRateLimit("")).toBe(false);
   });
 });
@@ -195,27 +146,19 @@ describe("claudeAdapter.detectRateLimit", () => {
 // ---------------------------------------------------------------------------
 
 describe("claudeAdapter.buildHandoffPrompt", () => {
-  it("produces a markdown string with the task title as h1", () => {
-    const prompt = claudeAdapter.buildHandoffPrompt({
+  it("produces correct markdown: h1 title, h2 objective, context items included, empty context works, ordering preserved", () => {
+    // h1 title + h2 objective
+    const basic = claudeAdapter.buildHandoffPrompt({
       title: "Implement the widget",
       objective: "Build a robust widget module.",
       contextItems: [],
     });
-    expect(prompt).toContain("# Implement the widget");
-  });
+    expect(basic).toContain("# Implement the widget");
+    expect(basic).toContain("## Objective");
+    expect(basic).toContain("Build a robust widget module.");
 
-  it("includes the objective under an h2 heading", () => {
-    const prompt = claudeAdapter.buildHandoffPrompt({
-      title: "Task",
-      objective: "Do the thing correctly.",
-      contextItems: [],
-    });
-    expect(prompt).toContain("## Objective");
-    expect(prompt).toContain("Do the thing correctly.");
-  });
-
-  it("includes each context item as its own h2 section", () => {
-    const prompt = claudeAdapter.buildHandoffPrompt({
+    // context items included
+    const withContext = claudeAdapter.buildHandoffPrompt({
       title: "Task",
       objective: "Objective text.",
       contextItems: [
@@ -223,24 +166,22 @@ describe("claudeAdapter.buildHandoffPrompt", () => {
         { title: "Constraints", body: "No breaking changes." },
       ],
     });
-    expect(prompt).toContain("## Prior Work");
-    expect(prompt).toContain("Some prior work description.");
-    expect(prompt).toContain("## Constraints");
-    expect(prompt).toContain("No breaking changes.");
-  });
+    expect(withContext).toContain("## Prior Work");
+    expect(withContext).toContain("Some prior work description.");
+    expect(withContext).toContain("## Constraints");
+    expect(withContext).toContain("No breaking changes.");
 
-  it("produces a string (not empty) even with no context items", () => {
-    const prompt = claudeAdapter.buildHandoffPrompt({
+    // empty context still produces a non-empty string
+    const minimal = claudeAdapter.buildHandoffPrompt({
       title: "Minimal",
       objective: "Just the objective.",
       contextItems: [],
     });
-    expect(typeof prompt).toBe("string");
-    expect(prompt.length).toBeGreaterThan(0);
-  });
+    expect(typeof minimal).toBe("string");
+    expect(minimal.length).toBeGreaterThan(0);
 
-  it("preserves ordering of context items", () => {
-    const prompt = claudeAdapter.buildHandoffPrompt({
+    // ordering preserved
+    const ordered = claudeAdapter.buildHandoffPrompt({
       title: "Order test",
       objective: "Check ordering.",
       contextItems: [
@@ -249,9 +190,9 @@ describe("claudeAdapter.buildHandoffPrompt", () => {
         { title: "Third", body: "Third body." },
       ],
     });
-    const firstPos = prompt.indexOf("## First");
-    const secondPos = prompt.indexOf("## Second");
-    const thirdPos = prompt.indexOf("## Third");
+    const firstPos = ordered.indexOf("## First");
+    const secondPos = ordered.indexOf("## Second");
+    const thirdPos = ordered.indexOf("## Third");
     expect(firstPos).toBeLessThan(secondPos);
     expect(secondPos).toBeLessThan(thirdPos);
   });
@@ -262,15 +203,9 @@ describe("claudeAdapter.buildHandoffPrompt", () => {
 // ---------------------------------------------------------------------------
 
 describe("claudeAdapter metadata", () => {
-  it("provider is 'claude'", () => {
+  it("has correct provider, executable, and requiredEnvVars", () => {
     expect(claudeAdapter.provider).toBe("claude");
-  });
-
-  it("executable is 'claude'", () => {
     expect(claudeAdapter.executable).toBe("claude");
-  });
-
-  it("requiredEnvVars includes ANTHROPIC_API_KEY", () => {
     expect(claudeAdapter.requiredEnvVars).toContain("ANTHROPIC_API_KEY");
   });
 });

@@ -36,11 +36,11 @@ describe("codexAdapter.buildCommand", () => {
       "gpt-5.4",
       "hello world",
     ]);
-  });
-
-  it("always includes --skip-git-repo-check", () => {
-    const argv = codexAdapter.buildCommand("do something");
-    expect(argv).toContain("--skip-git-repo-check");
+    // executable-first and prompt-is-last are already covered by the full argv assertion above
+    expect(argv[0]).toBe("codex");
+    expect(argv[1]).toBe("exec");
+    expect(argv[argv.length - 1]).toBe("hello world");
+    expect(argv).not.toContain("--json");
   });
 
   it("uses the specified model", () => {
@@ -52,39 +52,18 @@ describe("codexAdapter.buildCommand", () => {
     expect(argv).not.toContain("gpt-5.4");
   });
 
-  it("adds --json flag when outputFormat is jsonl", () => {
-    const argv = codexAdapter.buildCommand("output in jsonl", {
-      outputFormat: "jsonl",
-    });
-    expect(argv).toContain("--json");
-  });
+  it("adds --json flag when outputFormat is jsonl and omits it for text", () => {
+    const jsonlArgv = codexAdapter.buildCommand("output in jsonl", { outputFormat: "jsonl" });
+    expect(jsonlArgv).toContain("--json");
 
-  it("does not add --json flag for text format", () => {
-    const argv = codexAdapter.buildCommand("output in text", {
-      outputFormat: "text",
-    });
-    expect(argv).not.toContain("--json");
-  });
-
-  it("defaults to text format (no --json flag)", () => {
-    const argv = codexAdapter.buildCommand("no format specified");
-    expect(argv).not.toContain("--json");
+    const textArgv = codexAdapter.buildCommand("output in text", { outputFormat: "text" });
+    expect(textArgv).not.toContain("--json");
   });
 
   it("prompt is the last element", () => {
     const prompt = "the final prompt";
     const argv = codexAdapter.buildCommand(prompt);
     expect(argv[argv.length - 1]).toBe(prompt);
-  });
-
-  it("executable is the first element", () => {
-    const argv = codexAdapter.buildCommand("x");
-    expect(argv[0]).toBe("codex");
-  });
-
-  it("second element is 'exec'", () => {
-    const argv = codexAdapter.buildCommand("x");
-    expect(argv[1]).toBe("exec");
   });
 });
 
@@ -93,21 +72,11 @@ describe("codexAdapter.buildCommand", () => {
 // ---------------------------------------------------------------------------
 
 describe("codexAdapter.parseOutput — text format", () => {
-  it("returns trimmed text from the golden text fixture", () => {
+  it("returns trimmed text from the golden fixture, defaults to text, and trims whitespace", () => {
     const raw = readFixture("task-output.txt");
-    const result = codexAdapter.parseOutput(raw, "text");
-    expect(result).toBe("Hello from Codex. Nothing else.");
-  });
-
-  it("defaults to text parsing when outputFormat is omitted", () => {
-    const raw = readFixture("task-output.txt");
-    const result = codexAdapter.parseOutput(raw);
-    expect(result).toBe("Hello from Codex. Nothing else.");
-  });
-
-  it("trims surrounding whitespace", () => {
-    const padded = "  Hello from Codex.  \n";
-    expect(codexAdapter.parseOutput(padded, "text")).toBe("Hello from Codex.");
+    expect(codexAdapter.parseOutput(raw, "text")).toBe("Hello from Codex. Nothing else.");
+    expect(codexAdapter.parseOutput(raw)).toBe("Hello from Codex. Nothing else.");
+    expect(codexAdapter.parseOutput("  Hello from Codex.  \n", "text")).toBe("Hello from Codex.");
   });
 });
 
@@ -116,34 +85,28 @@ describe("codexAdapter.parseOutput — text format", () => {
 // ---------------------------------------------------------------------------
 
 describe("codexAdapter.parseOutput — JSONL format", () => {
-  it("extracts last assistant message from the golden JSONL fixture", () => {
+  it("extracts last assistant message from the golden JSONL fixture and returns the last when multiple exist", () => {
     const raw = readFixture("task-output-jsonl.jsonl");
-    const result = codexAdapter.parseOutput(raw, "jsonl");
-    expect(result).toBe("Hello from Codex.");
-  });
+    expect(codexAdapter.parseOutput(raw, "jsonl")).toBe("Hello from Codex.");
 
-  it("throws when JSONL contains no assistant message", () => {
-    const noAssistant = '{"type":"session_end","exit_code":0}\n';
-    expect(() => codexAdapter.parseOutput(noAssistant, "jsonl")).toThrow(/no assistant message/);
-  });
-
-  it("throws when assistant message has non-string content", () => {
-    const badContent = '{"type":"message","role":"assistant","content":42}\n';
-    expect(() => codexAdapter.parseOutput(badContent, "jsonl")).toThrow(/non-string content/);
-  });
-
-  it("throws on completely invalid JSONL", () => {
-    expect(() => codexAdapter.parseOutput("not json at all", "jsonl")).toThrow();
-  });
-
-  it("returns the last assistant message when multiple exist", () => {
     const multiAssistant = [
       '{"type":"message","role":"assistant","content":"First response."}',
       '{"type":"message","role":"assistant","content":"Final response."}',
       '{"type":"session_end","exit_code":0}',
     ].join("\n");
-    const result = codexAdapter.parseOutput(multiAssistant, "jsonl");
-    expect(result).toBe("Final response.");
+    expect(codexAdapter.parseOutput(multiAssistant, "jsonl")).toBe("Final response.");
+  });
+
+  it("throws on no assistant message, non-string content, and completely invalid JSONL", () => {
+    expect(() =>
+      codexAdapter.parseOutput('{"type":"session_end","exit_code":0}\n', "jsonl"),
+    ).toThrow(/no assistant message/);
+
+    expect(() =>
+      codexAdapter.parseOutput('{"type":"message","role":"assistant","content":42}\n', "jsonl"),
+    ).toThrow(/non-string content/);
+
+    expect(() => codexAdapter.parseOutput("not json at all", "jsonl")).toThrow();
   });
 });
 
@@ -152,65 +115,41 @@ describe("codexAdapter.parseOutput — JSONL format", () => {
 // ---------------------------------------------------------------------------
 
 describe("codexAdapter.interpretExitCode", () => {
-  it("maps exit code 0 to success", () => {
-    const result = codexAdapter.interpretExitCode(0);
-    expect(result.success).toBe(true);
-    expect(result.reason).toBe("success");
-  });
+  it("maps exit codes to the correct success/reason values", () => {
+    const ok = codexAdapter.interpretExitCode(0);
+    expect(ok.success).toBe(true);
+    expect(ok.reason).toBe("success");
 
-  it("maps exit code 1 to general error", () => {
-    const result = codexAdapter.interpretExitCode(1);
-    expect(result.success).toBe(false);
-    expect(result.reason).toMatch(/general error/i);
-  });
+    const general = codexAdapter.interpretExitCode(1);
+    expect(general.success).toBe(false);
+    expect(general.reason).toMatch(/general error/i);
 
-  it("maps an unknown exit code to failure with code in reason", () => {
-    const result = codexAdapter.interpretExitCode(99);
-    expect(result.success).toBe(false);
-    expect(result.reason).toContain("99");
-  });
+    const unknown = codexAdapter.interpretExitCode(99);
+    expect(unknown.success).toBe(false);
+    expect(unknown.reason).toContain("99");
 
-  it("maps negative exit codes to failure", () => {
-    const result = codexAdapter.interpretExitCode(-1);
-    expect(result.success).toBe(false);
+    const negative = codexAdapter.interpretExitCode(-1);
+    expect(negative.success).toBe(false);
   });
 });
 
 // ---------------------------------------------------------------------------
-// detectRateLimit — golden fixture
+// detectRateLimit
 // ---------------------------------------------------------------------------
 
 describe("codexAdapter.detectRateLimit", () => {
-  it("detects 'data not available yet' from the golden error fixture", () => {
-    const raw = readFixture("status-error-unavailable.txt");
-    expect(codexAdapter.detectRateLimit(raw)).toBe(true);
-  });
-
-  it("detects 'rate limit' in arbitrary text", () => {
+  it("detects rate limit patterns (golden fixture and arbitrary text, case-insensitive)", () => {
+    expect(codexAdapter.detectRateLimit(readFixture("status-error-unavailable.txt"))).toBe(true);
     expect(codexAdapter.detectRateLimit("You have hit the rate limit")).toBe(true);
-  });
-
-  it("detects 'too many requests' in arbitrary text", () => {
     expect(codexAdapter.detectRateLimit("Error: too many requests, please wait")).toBe(true);
-  });
-
-  it("is case-insensitive for rate limit patterns", () => {
     expect(codexAdapter.detectRateLimit("RATE LIMIT exceeded")).toBe(true);
     expect(codexAdapter.detectRateLimit("Too Many Requests")).toBe(true);
     expect(codexAdapter.detectRateLimit("Data Not Available Yet")).toBe(true);
   });
 
-  it("returns false for normal task output", () => {
-    const raw = readFixture("task-output.txt");
-    expect(codexAdapter.detectRateLimit(raw)).toBe(false);
-  });
-
-  it("returns false for session metadata on stderr", () => {
-    const raw = readFixture("task-stderr.txt");
-    expect(codexAdapter.detectRateLimit(raw)).toBe(false);
-  });
-
-  it("returns false for an empty string", () => {
+  it("returns false for non-rate-limit text", () => {
+    expect(codexAdapter.detectRateLimit(readFixture("task-output.txt"))).toBe(false);
+    expect(codexAdapter.detectRateLimit(readFixture("task-stderr.txt"))).toBe(false);
     expect(codexAdapter.detectRateLimit("")).toBe(false);
   });
 });
@@ -220,27 +159,19 @@ describe("codexAdapter.detectRateLimit", () => {
 // ---------------------------------------------------------------------------
 
 describe("codexAdapter.buildHandoffPrompt", () => {
-  it("produces a markdown string with the task title as h1", () => {
-    const prompt = codexAdapter.buildHandoffPrompt({
+  it("produces correct markdown: h1 title, h2 objective, context items included, empty context works, ordering preserved, starts with h1", () => {
+    // h1 title + h2 objective
+    const basic = codexAdapter.buildHandoffPrompt({
       title: "Implement the widget",
       objective: "Build a robust widget module.",
       contextItems: [],
     });
-    expect(prompt).toContain("# Implement the widget");
-  });
+    expect(basic).toContain("# Implement the widget");
+    expect(basic).toContain("## Objective");
+    expect(basic).toContain("Build a robust widget module.");
 
-  it("includes the objective under an h2 heading", () => {
-    const prompt = codexAdapter.buildHandoffPrompt({
-      title: "Task",
-      objective: "Do the thing correctly.",
-      contextItems: [],
-    });
-    expect(prompt).toContain("## Objective");
-    expect(prompt).toContain("Do the thing correctly.");
-  });
-
-  it("includes each context item as its own h2 section", () => {
-    const prompt = codexAdapter.buildHandoffPrompt({
+    // context items included
+    const withContext = codexAdapter.buildHandoffPrompt({
       title: "Task",
       objective: "Objective text.",
       contextItems: [
@@ -248,24 +179,22 @@ describe("codexAdapter.buildHandoffPrompt", () => {
         { title: "Constraints", body: "No breaking changes." },
       ],
     });
-    expect(prompt).toContain("## Prior Work");
-    expect(prompt).toContain("Some prior work description.");
-    expect(prompt).toContain("## Constraints");
-    expect(prompt).toContain("No breaking changes.");
-  });
+    expect(withContext).toContain("## Prior Work");
+    expect(withContext).toContain("Some prior work description.");
+    expect(withContext).toContain("## Constraints");
+    expect(withContext).toContain("No breaking changes.");
 
-  it("produces a non-empty string even with no context items", () => {
-    const prompt = codexAdapter.buildHandoffPrompt({
+    // empty context still produces a non-empty string
+    const minimal = codexAdapter.buildHandoffPrompt({
       title: "Minimal",
       objective: "Just the objective.",
       contextItems: [],
     });
-    expect(typeof prompt).toBe("string");
-    expect(prompt.length).toBeGreaterThan(0);
-  });
+    expect(typeof minimal).toBe("string");
+    expect(minimal.length).toBeGreaterThan(0);
 
-  it("preserves ordering of context items", () => {
-    const prompt = codexAdapter.buildHandoffPrompt({
+    // ordering preserved
+    const ordered = codexAdapter.buildHandoffPrompt({
       title: "Order test",
       objective: "Check ordering.",
       contextItems: [
@@ -274,20 +203,19 @@ describe("codexAdapter.buildHandoffPrompt", () => {
         { title: "Third", body: "Third body." },
       ],
     });
-    const firstPos = prompt.indexOf("## First");
-    const secondPos = prompt.indexOf("## Second");
-    const thirdPos = prompt.indexOf("## Third");
+    const firstPos = ordered.indexOf("## First");
+    const secondPos = ordered.indexOf("## Second");
+    const thirdPos = ordered.indexOf("## Third");
     expect(firstPos).toBeLessThan(secondPos);
     expect(secondPos).toBeLessThan(thirdPos);
-  });
 
-  it("returns a valid markdown string (starts with h1)", () => {
-    const prompt = codexAdapter.buildHandoffPrompt({
+    // starts with h1
+    const startCheck = codexAdapter.buildHandoffPrompt({
       title: "My Task",
       objective: "Some objective.",
       contextItems: [],
     });
-    expect(prompt.startsWith("# My Task")).toBe(true);
+    expect(startCheck.startsWith("# My Task")).toBe(true);
   });
 });
 
@@ -296,15 +224,9 @@ describe("codexAdapter.buildHandoffPrompt", () => {
 // ---------------------------------------------------------------------------
 
 describe("codexAdapter metadata", () => {
-  it("provider is 'codex'", () => {
+  it("has correct provider, executable, and requiredEnvVars", () => {
     expect(codexAdapter.provider).toBe("codex");
-  });
-
-  it("executable is 'codex'", () => {
     expect(codexAdapter.executable).toBe("codex");
-  });
-
-  it("requiredEnvVars includes OPENAI_API_KEY", () => {
     expect(codexAdapter.requiredEnvVars).toContain("OPENAI_API_KEY");
   });
 });

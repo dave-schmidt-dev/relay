@@ -37,14 +37,14 @@ describe("claude golden files: fixture presence", () => {
     "cli-metadata.json",
   ];
 
-  for (const filename of expectedFiles) {
-    it(`${filename} exists and is non-empty`, () => {
+  it("all expected fixture files exist and are non-empty", () => {
+    for (const filename of expectedFiles) {
       const fullPath = path.join(fixturesDir, filename);
       expect(fs.existsSync(fullPath), `${filename} must exist`).toBe(true);
       const stat = fs.statSync(fullPath);
       expect(stat.size, `${filename} must not be empty`).toBeGreaterThan(0);
-    });
-  }
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -101,74 +101,48 @@ describe("claude golden files: task-output.json", () => {
     return JSON.parse(raw) as TaskOutput;
   }
 
-  it("parses as valid JSON", () => {
+  it("has valid structure with expected fields", () => {
     expect(() => parseTaskOutput()).not.toThrow();
-  });
+    const data = parseTaskOutput();
 
-  it('type is "result"', () => {
-    expect(parseTaskOutput().type).toBe("result");
-  });
+    expect(data.type).toBe("result");
+    expect(data.subtype).toBe("success");
+    expect(data.is_error).toBe(false);
 
-  it('subtype is "success"', () => {
-    expect(parseTaskOutput().subtype).toBe("success");
-  });
-
-  it("is_error is false for a successful run", () => {
-    expect(parseTaskOutput().is_error).toBe(false);
-  });
-
-  it("result field contains the model response text", () => {
-    const { result } = parseTaskOutput();
+    const { result } = data;
     expect(typeof result).toBe("string");
     expect(result.length).toBeGreaterThan(0);
     expect(result).toBe("Hello from Claude.");
-  });
 
-  it("usage block has required token fields", () => {
-    const { usage } = parseTaskOutput();
+    const { usage } = data;
     expect(typeof usage).toBe("object");
     expect(typeof usage.input_tokens).toBe("number");
     expect(typeof usage.output_tokens).toBe("number");
     expect(typeof usage.cache_creation_input_tokens).toBe("number");
     expect(typeof usage.cache_read_input_tokens).toBe("number");
-  });
 
-  it("usage block has server_tool_use sub-object", () => {
-    const { server_tool_use } = parseTaskOutput().usage;
+    const { server_tool_use } = usage;
     expect(typeof server_tool_use).toBe("object");
     expect(typeof server_tool_use.web_search_requests).toBe("number");
     expect(typeof server_tool_use.web_fetch_requests).toBe("number");
-  });
 
-  it("modelUsage has at least one model entry", () => {
-    const keys = Object.keys(parseTaskOutput().modelUsage);
+    const keys = Object.keys(data.modelUsage);
     expect(keys.length).toBeGreaterThan(0);
-  });
-
-  it("modelUsage entries have required cost and token fields", () => {
-    for (const [model, entry] of Object.entries(parseTaskOutput().modelUsage)) {
+    for (const [model, entry] of Object.entries(data.modelUsage)) {
       expect(typeof entry.inputTokens, `${model}.inputTokens`).toBe("number");
       expect(typeof entry.outputTokens, `${model}.outputTokens`).toBe("number");
       expect(typeof entry.costUSD, `${model}.costUSD`).toBe("number");
       expect(typeof entry.contextWindow, `${model}.contextWindow`).toBe("number");
       expect(typeof entry.maxOutputTokens, `${model}.maxOutputTokens`).toBe("number");
     }
-  });
 
-  it("total_cost_usd is a non-negative number", () => {
-    const { total_cost_usd } = parseTaskOutput();
-    expect(typeof total_cost_usd).toBe("number");
-    expect(total_cost_usd).toBeGreaterThanOrEqual(0);
-  });
+    expect(typeof data.total_cost_usd).toBe("number");
+    expect(data.total_cost_usd).toBeGreaterThanOrEqual(0);
 
-  it("session_id is a non-empty string", () => {
-    const { session_id } = parseTaskOutput();
-    expect(typeof session_id).toBe("string");
-    expect(session_id.length).toBeGreaterThan(0);
-  });
+    expect(typeof data.session_id).toBe("string");
+    expect(data.session_id.length).toBeGreaterThan(0);
 
-  it("permission_denials is an array", () => {
-    expect(Array.isArray(parseTaskOutput().permission_denials)).toBe(true);
+    expect(Array.isArray(data.permission_denials)).toBe(true);
   });
 });
 
@@ -177,16 +151,14 @@ describe("claude golden files: task-output.json", () => {
 // ---------------------------------------------------------------------------
 
 describe("claude golden files: task-output-text.txt", () => {
-  it("contains plain text (no JSON structure)", () => {
+  it("contains plain unescaped text matching expected response", () => {
     const raw = readFixture("task-output-text.txt");
+
     // Wrap in void to avoid returning `any` from JSON.parse.
     expect(() => {
       JSON.parse(raw);
     }).toThrow();
-  });
 
-  it("contains no ANSI escape sequences", () => {
-    const raw = readFixture("task-output-text.txt");
     // ANSI escape sequences start with ESC (U+001B) followed by '['.
     // Iterate via index to avoid spread-on-string lint issue; ASCII check is
     // safe because we only care about the ESC byte (0x1B), not multi-byte chars.
@@ -198,10 +170,7 @@ describe("claude golden files: task-output-text.txt", () => {
       }
     }
     expect(hasAnsi).toBe(false);
-  });
 
-  it("matches expected response text", () => {
-    const raw = readFixture("task-output-text.txt");
     expect(raw.trim()).toBe("Hello from Claude.");
   });
 });
@@ -211,67 +180,37 @@ describe("claude golden files: task-output-text.txt", () => {
 // ---------------------------------------------------------------------------
 
 describe("claude golden files: usage-probe-clean.txt", () => {
-  it('contains "Current session" section', () => {
+  it("contains all expected sections, labels, and parsed values", () => {
     const raw = readFixture("usage-probe-clean.txt");
+
     expect(raw).toContain("Current session");
-  });
-
-  it('contains "Current week" section', () => {
-    const raw = readFixture("usage-probe-clean.txt");
     expect(raw).toContain("Current week");
-  });
-
-  it("contains a percent-used value in the session section", () => {
-    const raw = readFixture("usage-probe-clean.txt");
     // e.g. "27% used" or "64% left"
     expect(raw).toMatch(/\d+%\s+(used|left)/);
-  });
-
-  it('contains "Opus" section for per-model tracking', () => {
-    const raw = readFixture("usage-probe-clean.txt");
     expect(raw).toContain("Opus");
-  });
-
-  it("contains reset time information", () => {
-    const raw = readFixture("usage-probe-clean.txt");
     expect(raw).toMatch(/Resets/i);
-  });
-
-  it("contains account email", () => {
-    const raw = readFixture("usage-probe-clean.txt");
     expect(raw).toMatch(/Account:\s*.+@.+\..+/);
-  });
-
-  it("contains organization name", () => {
-    const raw = readFixture("usage-probe-clean.txt");
     expect(raw).toContain("Organization:");
-  });
 
-  it("session percent parsed: 27% used → 73% left", () => {
-    const raw = readFixture("usage-probe-clean.txt");
-    // Extract "27% used" from session section — parser will compute 100-27=73% left
-    const match = /Current session[\s\S]*?(\d+)%\s+used/.exec(raw);
-    expect(match).not.toBeNull();
-    const usedPct = parseInt(match?.[1] ?? "", 10);
-    expect(usedPct).toBe(27);
-    expect(100 - usedPct).toBe(73);
-  });
+    // session percent parsed: 27% used → 73% left
+    const sessionMatch = /Current session[\s\S]*?(\d+)%\s+used/.exec(raw);
+    expect(sessionMatch).not.toBeNull();
+    const sessionUsedPct = parseInt(sessionMatch?.[1] ?? "", 10);
+    expect(sessionUsedPct).toBe(27);
+    expect(100 - sessionUsedPct).toBe(73);
 
-  it("weekly percent parsed: 64% left stays as-is", () => {
-    const raw = readFixture("usage-probe-clean.txt");
-    const match = /Current week \(all models\)[\s\S]*?(\d+)%\s+left/.exec(raw);
-    expect(match).not.toBeNull();
-    const leftPct = parseInt(match?.[1] ?? "", 10);
-    expect(leftPct).toBe(64);
-  });
+    // weekly percent parsed: 64% left stays as-is
+    const weeklyMatch = /Current week \(all models\)[\s\S]*?(\d+)%\s+left/.exec(raw);
+    expect(weeklyMatch).not.toBeNull();
+    const weeklyLeftPct = parseInt(weeklyMatch?.[1] ?? "", 10);
+    expect(weeklyLeftPct).toBe(64);
 
-  it("opus percent parsed: 18% used → 82% left", () => {
-    const raw = readFixture("usage-probe-clean.txt");
-    const match = /Current week \(Opus\)[\s\S]*?(\d+)%\s+used/.exec(raw);
-    expect(match).not.toBeNull();
-    const usedPct = parseInt(match?.[1] ?? "", 10);
-    expect(usedPct).toBe(18);
-    expect(100 - usedPct).toBe(82);
+    // opus percent parsed: 18% used → 82% left
+    const opusMatch = /Current week \(Opus\)[\s\S]*?(\d+)%\s+used/.exec(raw);
+    expect(opusMatch).not.toBeNull();
+    const opusUsedPct = parseInt(opusMatch?.[1] ?? "", 10);
+    expect(opusUsedPct).toBe(18);
+    expect(100 - opusUsedPct).toBe(82);
   });
 });
 
@@ -280,47 +219,32 @@ describe("claude golden files: usage-probe-clean.txt", () => {
 // ---------------------------------------------------------------------------
 
 describe("claude golden files: usage-probe-live-style.txt", () => {
-  it('contains "Current session" text (compacted or spaced)', () => {
+  it("contains expected sections and parsed percentage values", () => {
     const raw = readFixture("usage-probe-live-style.txt");
+
     // The live style compacts whitespace: "Current session" or similar
     expect(raw).toMatch(/Current\s*session/i);
-  });
-
-  it("contains a percentage value", () => {
-    const raw = readFixture("usage-probe-live-style.txt");
     expect(raw).toMatch(/\d+%/);
-  });
-
-  it("contains reset time reference", () => {
-    const raw = readFixture("usage-probe-live-style.txt");
     expect(raw).toMatch(/Reset/i);
-  });
-
-  it('contains "week" reference for weekly quota', () => {
-    const raw = readFixture("usage-probe-live-style.txt");
     expect(raw).toMatch(/week/i);
-  });
 
-  it("session percent parsed: 70% used → 30% left", () => {
-    const raw = readFixture("usage-probe-live-style.txt");
+    // session percent parsed: 70% used → 30% left
     // Compacted: "70%used"
-    const match = /(\d+)%\s*used/i.exec(raw);
-    expect(match).not.toBeNull();
-    const usedPct = parseInt(match?.[1] ?? "", 10);
-    expect(usedPct).toBe(70);
-    expect(100 - usedPct).toBe(30);
-  });
+    const sessionMatch = /(\d+)%\s*used/i.exec(raw);
+    expect(sessionMatch).not.toBeNull();
+    const sessionUsedPct = parseInt(sessionMatch?.[1] ?? "", 10);
+    expect(sessionUsedPct).toBe(70);
+    expect(100 - sessionUsedPct).toBe(30);
 
-  it("weekly percent parsed: 48% used → 52% left", () => {
-    const raw = readFixture("usage-probe-live-style.txt");
+    // weekly percent parsed: 48% used → 52% left
     // Find the second occurrence of "%used" — first is session, second is weekly
     const matches = [...raw.matchAll(/(\d+)%\s*used/gi)];
     expect(matches.length).toBeGreaterThanOrEqual(2);
     const weeklyMatch = matches[1];
     expect(weeklyMatch).toBeDefined();
-    const usedPct = parseInt(weeklyMatch?.[1] ?? "", 10);
-    expect(usedPct).toBe(48);
-    expect(100 - usedPct).toBe(52);
+    const weeklyUsedPct = parseInt(weeklyMatch?.[1] ?? "", 10);
+    expect(weeklyUsedPct).toBe(48);
+    expect(100 - weeklyUsedPct).toBe(52);
   });
 });
 
@@ -329,32 +253,20 @@ describe("claude golden files: usage-probe-live-style.txt", () => {
 // ---------------------------------------------------------------------------
 
 describe("claude golden files: usage-error-rate-limit.txt", () => {
-  it("contains rate limit error pattern", () => {
+  it("contains rate limit error indicators", () => {
     const raw = readFixture("usage-error-rate-limit.txt");
     expect(raw).toContain("rate limited");
-  });
-
-  it("contains 'Failed to load usage data' prefix", () => {
-    const raw = readFixture("usage-error-rate-limit.txt");
     expect(raw).toContain("Failed to load usage data");
   });
 });
 
 describe("claude golden files: usage-error-subscription.txt", () => {
-  it("contains subscription plan error pattern", () => {
+  it("contains subscription error indicators with real-world typo preserved", () => {
     const raw = readFixture("usage-error-subscription.txt");
     expect(raw).toContain("subscription plans");
-  });
-
-  it("contains /usage command reference", () => {
-    const raw = readFixture("usage-error-subscription.txt");
     expect(raw).toContain("/usage");
-  });
-
-  it('preserves real-world typo "vilable" (not "available")', () => {
     // NOTE: This typo exists in the actual Claude CLI output. Preserve it as-is
     // so parsers can match on the real string, not a corrected version.
-    const raw = readFixture("usage-error-subscription.txt");
     expect(raw).toContain("vilable");
     expect(raw).not.toContain("available");
   });
@@ -387,51 +299,29 @@ describe("claude golden files: cli-metadata.json", () => {
     return JSON.parse(raw) as CliMetadata;
   }
 
-  it("parses as valid JSON", () => {
+  it("has valid structure with expected fields and values", () => {
     expect(() => parseMetadata()).not.toThrow();
-  });
-
-  it("has a version field", () => {
     const meta = parseMetadata();
+
     expect(typeof meta.version).toBe("string");
     expect(meta.version.length).toBeGreaterThan(0);
-  });
-
-  it("version matches captured CLI version", () => {
-    const meta = parseMetadata();
     expect(meta.version).toBe("2.1.92");
-  });
 
-  it("has exit_codes map with key '0' for success", () => {
-    const meta = parseMetadata();
     expect(typeof meta.exit_codes).toBe("object");
     expect(meta.exit_codes["0"]).toBeDefined();
     expect(meta.exit_codes["0"]).toMatch(/success/i);
-  });
-
-  it("has exit_codes map with key '1' for error", () => {
-    const meta = parseMetadata();
     expect(meta.exit_codes["1"]).toBeDefined();
     expect(meta.exit_codes["1"]).toMatch(/error/i);
-  });
 
-  it("json_output_fields includes required fields", () => {
-    const meta = parseMetadata();
     const required = ["type", "result", "usage", "modelUsage"];
     for (const field of required) {
       expect(meta.json_output_fields, `json_output_fields must include "${field}"`).toContain(
         field,
       );
     }
-  });
 
-  it("flags map includes -p task flag", () => {
-    const meta = parseMetadata();
     expect(meta.flags.task).toBe("-p");
-  });
 
-  it("rate_limit_patterns is a non-empty array of strings", () => {
-    const meta = parseMetadata();
     expect(Array.isArray(meta.rate_limit_patterns)).toBe(true);
     expect(meta.rate_limit_patterns.length).toBeGreaterThan(0);
     for (const pattern of meta.rate_limit_patterns) {

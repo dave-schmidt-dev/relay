@@ -30,18 +30,10 @@ function minimalParams(overrides: Partial<CreateRunParams> = {}): CreateRunParam
 // ---------------------------------------------------------------------------
 
 describe("createRun", () => {
-  it("produces a run in queued status", () => {
+  it("creates a queued run with valid UUID and ISO timestamps", () => {
     const run = createRun(minimalParams());
     expect(run.status).toBe("queued");
-  });
-
-  it("generates a valid UUID for run_id", () => {
-    const run = createRun(minimalParams());
     expect(run.run_id).toMatch(UUID_RE);
-  });
-
-  it("sets all timestamp and pid fields to null", () => {
-    const run = createRun(minimalParams());
     expect(run.started_at).toBeNull();
     expect(run.ended_at).toBeNull();
     expect(run.pid).toBeNull();
@@ -49,13 +41,11 @@ describe("createRun", () => {
     expect(run.exit_reason).toBeNull();
   });
 
-  it("sets optional relational fields to null when not provided", () => {
+  it("sets optional relational fields", () => {
     const run = createRun(minimalParams());
     expect(run.parent_run_id).toBeNull();
     expect(run.handoff_id).toBeNull();
-  });
 
-  it("accepts optional parent_run_id and handoff_id", () => {
     const parent = createRun(minimalParams());
     const child = createRun(
       minimalParams({ parent_run_id: parent.run_id, handoff_id: "handoff-1" }),
@@ -64,7 +54,7 @@ describe("createRun", () => {
     expect(child.handoff_id).toBe("handoff-1");
   });
 
-  it("copies all required fields from params", () => {
+  it("copies required fields and generates unique IDs", () => {
     const params = minimalParams();
     const run = createRun(params);
     expect(run.project_root).toBe(params.project_root);
@@ -77,12 +67,9 @@ describe("createRun", () => {
     expect(run.provider_version).toBe(params.provider_version);
     expect(run.memory_hash).toBe(params.memory_hash);
     expect(run.estimated_tokens).toBe(params.estimated_tokens);
-  });
 
-  it("generates unique IDs for each call", () => {
-    const a = createRun(minimalParams());
     const b = createRun(minimalParams());
-    expect(a.run_id).not.toBe(b.run_id);
+    expect(run.run_id).not.toBe(b.run_id);
   });
 });
 
@@ -91,22 +78,19 @@ describe("createRun", () => {
 // ---------------------------------------------------------------------------
 
 describe("transitionRun — valid transitions", () => {
-  it("queued → running sets started_at and pid", () => {
+  it("queued → running sets started_at, pid, optional pid=null", () => {
     const run = createRun(minimalParams());
     const updated = transitionRun(run, "running", { pid: 12345 });
     expect(updated.status).toBe("running");
     expect(updated.started_at).toMatch(ISO_RE);
     expect(updated.pid).toBe(12345);
     expect(updated.ended_at).toBeNull();
+
+    const noPid = transitionRun(createRun(minimalParams()), "running");
+    expect(noPid.pid).toBeNull();
   });
 
-  it("queued → running without pid leaves pid null", () => {
-    const run = createRun(minimalParams());
-    const updated = transitionRun(run, "running");
-    expect(updated.pid).toBeNull();
-  });
-
-  it("running → succeeded sets ended_at and exit_code = 0", () => {
+  it("running → succeeded sets ended_at, exit_code=0", () => {
     const queued = createRun(minimalParams());
     const running = transitionRun(queued, "running", { pid: 1 });
     const succeeded = transitionRun(running, "succeeded");
@@ -116,43 +100,47 @@ describe("transitionRun — valid transitions", () => {
     expect(succeeded.exit_reason).toBeNull();
   });
 
-  it("running → failed sets ended_at, exit_code, and exit_reason", () => {
-    const queued = createRun(minimalParams());
-    const running = transitionRun(queued, "running", { pid: 2 });
-    const failed = transitionRun(running, "failed", { exit_code: 1, exit_reason: "rate_limited" });
-    expect(failed.status).toBe("failed");
-    expect(failed.ended_at).toMatch(ISO_RE);
-    expect(failed.exit_code).toBe(1);
-    expect(failed.exit_reason).toBe("rate_limited");
+  it("running → failed/canceled sets ended_at, exit codes, and reasons", () => {
+    const r1 = transitionRun(
+      transitionRun(createRun(minimalParams()), "running", { pid: 2 }),
+      "failed",
+      {
+        exit_code: 1,
+        exit_reason: "rate_limited",
+      },
+    );
+    expect(r1.status).toBe("failed");
+    expect(r1.ended_at).toMatch(ISO_RE);
+    expect(r1.exit_code).toBe(1);
+    expect(r1.exit_reason).toBe("rate_limited");
+
+    const r2 = transitionRun(
+      transitionRun(createRun(minimalParams()), "running", { pid: 3 }),
+      "canceled",
+    );
+    expect(r2.status).toBe("canceled");
+    expect(r2.ended_at).toMatch(ISO_RE);
+    expect(r2.exit_reason).toBe("canceled");
+
+    const r3 = transitionRun(
+      transitionRun(createRun(minimalParams()), "running", { pid: 4 }),
+      "canceled",
+      {
+        exit_reason: "user_abort",
+      },
+    );
+    expect(r3.exit_reason).toBe("user_abort");
   });
 
-  it("running → canceled sets ended_at and default exit_reason", () => {
-    const queued = createRun(minimalParams());
-    const running = transitionRun(queued, "running", { pid: 3 });
-    const canceled = transitionRun(running, "canceled");
-    expect(canceled.status).toBe("canceled");
-    expect(canceled.ended_at).toMatch(ISO_RE);
-    expect(canceled.exit_reason).toBe("canceled");
-  });
-
-  it("running → canceled respects custom exit_reason", () => {
-    const queued = createRun(minimalParams());
-    const running = transitionRun(queued, "running", { pid: 4 });
-    const canceled = transitionRun(running, "canceled", { exit_reason: "user_abort" });
-    expect(canceled.exit_reason).toBe("user_abort");
-  });
-
-  it("queued → canceled (direct cancel before start)", () => {
+  it("queued → canceled and immutability", () => {
     const run = createRun(minimalParams());
     const canceled = transitionRun(run, "canceled");
     expect(canceled.status).toBe("canceled");
     // ended_at must remain null — run never started
     expect(canceled.ended_at).toBeNull();
     expect(canceled.exit_reason).toBe("canceled");
-  });
 
-  it("transitionRun returns a new object (immutable)", () => {
-    const run = createRun(minimalParams());
+    // Returns a new object (immutable)
     const updated = transitionRun(run, "running");
     expect(updated).not.toBe(run);
     expect(run.status).toBe("queued");
@@ -164,46 +152,27 @@ describe("transitionRun — valid transitions", () => {
 // ---------------------------------------------------------------------------
 
 describe("transitionRun — invalid transitions", () => {
-  it("succeeded → running throws", () => {
-    const run = createRun(minimalParams());
-    const running = transitionRun(run, "running");
+  it("terminal states cannot transition", () => {
+    const running = transitionRun(createRun(minimalParams()), "running");
     const succeeded = transitionRun(running, "succeeded");
     expect(() => transitionRun(succeeded, "running")).toThrow(/succeeded → running/);
-  });
-
-  it("succeeded → failed throws", () => {
-    const run = createRun(minimalParams());
-    const running = transitionRun(run, "running");
-    const succeeded = transitionRun(running, "succeeded");
     expect(() => transitionRun(succeeded, "failed")).toThrow(/succeeded → failed/);
-  });
 
-  it("failed → queued throws", () => {
-    const run = createRun(minimalParams());
-    const running = transitionRun(run, "running");
-    const failed = transitionRun(running, "failed", { exit_code: 1 });
+    const failed = transitionRun(transitionRun(createRun(minimalParams()), "running"), "failed", {
+      exit_code: 1,
+    });
     expect(() => transitionRun(failed, "queued" as never)).toThrow(/failed → queued/);
-  });
 
-  it("canceled → running throws", () => {
-    const run = createRun(minimalParams());
-    const canceled = transitionRun(run, "canceled");
+    const canceled = transitionRun(createRun(minimalParams()), "canceled");
     expect(() => transitionRun(canceled, "running")).toThrow(/canceled → running/);
   });
 
-  it("queued → succeeded throws (skip running)", () => {
-    const run = createRun(minimalParams());
-    expect(() => transitionRun(run, "succeeded")).toThrow(/queued → succeeded/);
-  });
+  it("cannot skip states", () => {
+    const queued = createRun(minimalParams());
+    expect(() => transitionRun(queued, "succeeded")).toThrow(/queued → succeeded/);
+    expect(() => transitionRun(queued, "failed")).toThrow(/queued → failed/);
 
-  it("queued → failed throws (skip running)", () => {
-    const run = createRun(minimalParams());
-    expect(() => transitionRun(run, "failed")).toThrow(/queued → failed/);
-  });
-
-  it("running → queued throws", () => {
-    const run = createRun(minimalParams());
-    const running = transitionRun(run, "running");
+    const running = transitionRun(createRun(minimalParams()), "running");
     expect(() => transitionRun(running, "queued" as never)).toThrow(/running → queued/);
   });
 });
@@ -213,7 +182,7 @@ describe("transitionRun — invalid transitions", () => {
 // ---------------------------------------------------------------------------
 
 describe("createEventFactory", () => {
-  it("produces events with incrementing sequence_no starting at 0", () => {
+  it("incrementing sequence and custom initial", () => {
     const makeEvent = createEventFactory();
     const e1 = makeEvent("run-1", "stdout", "line 1");
     const e2 = makeEvent("run-1", "stderr", "line 2");
@@ -221,47 +190,31 @@ describe("createEventFactory", () => {
     expect(e1.sequence_no).toBe(0);
     expect(e2.sequence_no).toBe(1);
     expect(e3.sequence_no).toBe(2);
+
+    const makeCustom = createEventFactory(10);
+    expect(makeCustom("run-1", "stdout", "hello").sequence_no).toBe(10);
   });
 
-  it("accepts a custom initial sequence", () => {
-    const makeEvent = createEventFactory(10);
-    const e = makeEvent("run-1", "stdout", "hello");
-    expect(e.sequence_no).toBe(10);
-  });
-
-  it("produces events with valid UUID event_id", () => {
-    const makeEvent = createEventFactory();
-    const e = makeEvent("run-1", "stdout", "hello");
-    expect(e.event_id).toMatch(UUID_RE);
-  });
-
-  it("sets run_id, kind, and payload correctly", () => {
+  it("event structure: UUID, run_id, kind, payload, ISO timestamp", () => {
     const makeEvent = createEventFactory();
     const e = makeEvent("run-abc", "artifact", { path: "/tmp/out.md" });
+    expect(e.event_id).toMatch(UUID_RE);
     expect(e.run_id).toBe("run-abc");
     expect(e.kind).toBe("artifact");
     expect(e.payload).toEqual({ path: "/tmp/out.md" });
-  });
-
-  it("timestamps are ISO format", () => {
-    const makeEvent = createEventFactory();
-    const e = makeEvent("run-1", "stdout", "hello");
     expect(e.ts).toMatch(ISO_RE);
   });
 
-  it("two factories have independent counters", () => {
+  it("independent factories and unique IDs", () => {
     const makeA = createEventFactory();
     const makeB = createEventFactory();
     makeA("r", "stdout", "1");
     makeA("r", "stdout", "2");
     const bFirst = makeB("r", "stdout", "b1");
     expect(bFirst.sequence_no).toBe(0);
-  });
 
-  it("generates unique event_ids across calls", () => {
-    const makeEvent = createEventFactory();
-    const e1 = makeEvent("run-1", "stdout", "a");
-    const e2 = makeEvent("run-1", "stdout", "b");
+    const e1 = makeA("run-1", "stdout", "a");
+    const e2 = makeA("run-1", "stdout", "b");
     expect(e1.event_id).not.toBe(e2.event_id);
   });
 });
@@ -271,30 +224,22 @@ describe("createEventFactory", () => {
 // ---------------------------------------------------------------------------
 
 describe("createAction", () => {
-  it("produces a valid action with generated UUID", () => {
+  it("produces valid action with all fields", () => {
     const action = createAction("run_launched", "run-1", { provider: "claude" });
     expect(action.action_id).toMatch(UUID_RE);
     expect(action.kind).toBe("run_launched");
     expect(action.run_id).toBe("run-1");
     expect(action.detail).toEqual({ provider: "claude" });
-  });
-
-  it("timestamp is ISO format", () => {
-    const action = createAction("note_added");
     expect(action.ts).toMatch(ISO_RE);
   });
 
-  it("run_id defaults to null", () => {
-    const action = createAction("export_created");
-    expect(action.run_id).toBeNull();
-  });
+  it("defaults and unique IDs", () => {
+    const noRunId = createAction("export_created");
+    expect(noRunId.run_id).toBeNull();
 
-  it("detail defaults to empty object", () => {
-    const action = createAction("usage_adjusted");
-    expect(action.detail).toEqual({});
-  });
+    const noDetail = createAction("usage_adjusted");
+    expect(noDetail.detail).toEqual({});
 
-  it("generates unique action_ids", () => {
     const a = createAction("run_canceled", "run-1");
     const b = createAction("run_canceled", "run-1");
     expect(a.action_id).not.toBe(b.action_id);

@@ -110,7 +110,7 @@ function makeOrchestrator(
 // ---------------------------------------------------------------------------
 
 describe("ProbeOrchestrator: initial state", () => {
-  it("getAllSnapshots() returns an empty map on creation", () => {
+  it("returns empty snapshots on creation", () => {
     const orch = createProbeOrchestrator({
       providers: ["claude", "codex", "gemini"],
       globalStoragePath: tmpDir,
@@ -119,74 +119,59 @@ describe("ProbeOrchestrator: initial state", () => {
 
     const all = orch.getAllSnapshots();
     expect(all.size).toBe(0);
-  });
-
-  it("getSnapshot() returns null for an unprobed provider", () => {
-    const orch = createProbeOrchestrator({
-      providers: ["claude"],
-      globalStoragePath: tmpDir,
-      sessionFactory: () => makeFakeSession([]),
-    });
-
     expect(orch.getSnapshot("claude")).toBeNull();
   });
 });
 
 describe("ProbeOrchestrator: probeNow with golden fixtures", () => {
-  it("claude: returns correct snapshot from clean fixture", async () => {
-    const raw = readFixture("claude", "usage-probe-clean.txt");
-    const sessions = new Map<Provider, PTYSession>([["claude", makeFakeSession([raw])]]);
-    const orch = makeOrchestrator(["claude"], sessions);
+  it("returns correct snapshots from clean fixtures for all providers", async () => {
+    // Claude
+    const claudeRaw = readFixture("claude", "usage-probe-clean.txt");
+    const claudeSessions = new Map<Provider, PTYSession>([
+      ["claude", makeFakeSession([claudeRaw])],
+    ]);
+    const claudeOrch = makeOrchestrator(["claude"], claudeSessions);
+    const claudeSnap = await claudeOrch.probeNow("claude");
 
-    const snap = await orch.probeNow("claude");
+    expect(claudeSnap.provider).toBe("claude");
+    expect(claudeSnap.source).toBe("probe");
+    expect(claudeSnap.stale).toBe(false);
+    expect(claudeSnap.error).toBeNull();
+    expect(claudeSnap.staleSince).toBeNull();
+    expect(claudeSnap.data).not.toBeNull();
+    const claudeData = claudeSnap.data as { sessionPercentLeft: number; weeklyPercentLeft: number };
+    expect(claudeData.sessionPercentLeft).toBe(73);
+    expect(claudeData.weeklyPercentLeft).toBe(64);
 
-    expect(snap.provider).toBe("claude");
-    expect(snap.source).toBe("probe");
-    expect(snap.stale).toBe(false);
-    expect(snap.error).toBeNull();
-    expect(snap.staleSince).toBeNull();
-    expect(snap.data).not.toBeNull();
+    // Codex
+    const codexRaw = readFixture("codex", "status-probe-clean.txt");
+    const codexSessions = new Map<Provider, PTYSession>([["codex", makeFakeSession([codexRaw])]]);
+    const codexOrch = makeOrchestrator(["codex"], codexSessions);
+    const codexSnap = await codexOrch.probeNow("codex");
 
-    // Claude clean fixture: session=73%, weekly=64%, opus=82%
-    const data = snap.data as { sessionPercentLeft: number; weeklyPercentLeft: number };
-    expect(data.sessionPercentLeft).toBe(73);
-    expect(data.weeklyPercentLeft).toBe(64);
-  });
+    expect(codexSnap.provider).toBe("codex");
+    expect(codexSnap.source).toBe("probe");
+    expect(codexSnap.stale).toBe(false);
+    expect(codexSnap.error).toBeNull();
+    const codexData = codexSnap.data as { credits: number; fiveHourPercentLeft: number };
+    expect(codexData.credits).toBe(12.5);
+    expect(codexData.fiveHourPercentLeft).toBe(68);
 
-  it("codex: returns correct snapshot from clean fixture", async () => {
-    const raw = readFixture("codex", "status-probe-clean.txt");
-    const sessions = new Map<Provider, PTYSession>([["codex", makeFakeSession([raw])]]);
-    const orch = makeOrchestrator(["codex"], sessions);
+    // Gemini
+    const geminiRaw = readFixture("gemini", "stats-probe-clean.txt");
+    const geminiSessions = new Map<Provider, PTYSession>([
+      ["gemini", makeFakeSession([geminiRaw])],
+    ]);
+    const geminiOrch = makeOrchestrator(["gemini"], geminiSessions);
+    const geminiSnap = await geminiOrch.probeNow("gemini");
 
-    const snap = await orch.probeNow("codex");
-
-    expect(snap.provider).toBe("codex");
-    expect(snap.source).toBe("probe");
-    expect(snap.stale).toBe(false);
-    expect(snap.error).toBeNull();
-
-    const data = snap.data as { credits: number; fiveHourPercentLeft: number };
-    expect(data.credits).toBe(12.5);
-    expect(data.fiveHourPercentLeft).toBe(68);
-  });
-
-  it("gemini: returns correct snapshot from clean fixture", async () => {
-    const raw = readFixture("gemini", "stats-probe-clean.txt");
-    const sessions = new Map<Provider, PTYSession>([["gemini", makeFakeSession([raw])]]);
-    const orch = makeOrchestrator(["gemini"], sessions);
-
-    const snap = await orch.probeNow("gemini");
-
-    expect(snap.provider).toBe("gemini");
-    expect(snap.source).toBe("probe");
-    expect(snap.stale).toBe(false);
-    expect(snap.error).toBeNull();
-
-    const data = snap.data as { flashPercentLeft: number; proPercentLeft: number };
-    // Fixture: gemini-2.5-flash = 98.3% → rounded to 98
-    expect(data.flashPercentLeft).toBe(98);
-    // Fixture: gemini-2.5-pro = 83.3% → rounded to 83
-    expect(data.proPercentLeft).toBe(83);
+    expect(geminiSnap.provider).toBe("gemini");
+    expect(geminiSnap.source).toBe("probe");
+    expect(geminiSnap.stale).toBe(false);
+    expect(geminiSnap.error).toBeNull();
+    const geminiData = geminiSnap.data as { flashPercentLeft: number; proPercentLeft: number };
+    expect(geminiData.flashPercentLeft).toBe(98);
+    expect(geminiData.proPercentLeft).toBe(83);
   });
 
   it("probedAt is a valid ISO timestamp", async () => {
@@ -202,8 +187,8 @@ describe("ProbeOrchestrator: probeNow with golden fixtures", () => {
 });
 
 describe("ProbeOrchestrator: error recovery (empty output)", () => {
-  it("retries once on empty output and returns stale snapshot with error", async () => {
-    // Both probe() calls return empty string.
+  it("retries on empty output and returns stale snapshot; also handles parser errors", async () => {
+    // Empty output case
     const sessions = new Map<Provider, PTYSession>([["claude", makeFakeSession(["", ""])]]);
     const orch = makeOrchestrator(["claude"], sessions);
 
@@ -212,39 +197,33 @@ describe("ProbeOrchestrator: error recovery (empty output)", () => {
     expect(snap.stale).toBe(true);
     expect(snap.error).toMatch(/empty/i);
     expect(snap.source).toBe("cached");
-    expect(snap.data).toBeNull(); // No prior good snapshot to fall back to.
+    expect(snap.data).toBeNull();
+
+    // Parser error case
+    const sessions2 = new Map<Provider, PTYSession>([
+      ["claude", makeFakeSession(["rate limit exceeded", "rate limit exceeded"])],
+    ]);
+    const orch2 = makeOrchestrator(["claude"], sessions2);
+
+    const snap2 = await orch2.probeNow("claude");
+
+    expect(snap2.stale).toBe(true);
+    expect(snap2.error).not.toBeNull();
+    expect(snap2.source).toBe("cached");
   });
 
   it("preserves last good snapshot in data when probe fails", async () => {
     const raw = readFixture("claude", "usage-probe-clean.txt");
-    const sessions = new Map<Provider, PTYSession>([
-      // First call succeeds; subsequent calls return empty.
-      ["claude", makeFakeSession([raw, "", ""])],
-    ]);
+    const sessions = new Map<Provider, PTYSession>([["claude", makeFakeSession([raw, "", ""])]]);
     const orch = makeOrchestrator(["claude"], sessions);
 
-    // First probe: success.
     await orch.probeNow("claude");
-    // Second probe: failure — should cache the previous data.
     const snap = await orch.probeNow("claude");
 
     expect(snap.stale).toBe(true);
     expect(snap.data).not.toBeNull();
     const data = snap.data as { sessionPercentLeft: number };
     expect(data.sessionPercentLeft).toBe(73);
-  });
-
-  it("returns stale snapshot when parser throws on bad output", async () => {
-    const sessions = new Map<Provider, PTYSession>([
-      ["claude", makeFakeSession(["rate limit exceeded", "rate limit exceeded"])],
-    ]);
-    const orch = makeOrchestrator(["claude"], sessions);
-
-    const snap = await orch.probeNow("claude");
-
-    expect(snap.stale).toBe(true);
-    expect(snap.error).not.toBeNull();
-    expect(snap.source).toBe("cached");
   });
 });
 
@@ -254,16 +233,13 @@ describe("ProbeOrchestrator: stale expiration", () => {
     const orch = createProbeOrchestrator({
       providers: ["claude"],
       globalStoragePath: tmpDir,
-      // Expiry of 0 ms — any stale snapshot is immediately expired.
       staleExpirationMs: 0,
       sessionFactory: (_p) => fakeSession,
     });
 
-    // First probe fails → stale, staleSince = now.
     const snap1 = await orch.probeNow("claude");
     expect(snap1.stale).toBe(true);
 
-    // Second probe also fails. With 0 ms expiry, it should be expired.
     const snap2 = await orch.probeNow("claude");
     expect(snap2.stale).toBe(true);
     expect(snap2.exhausted).toBe(true);
@@ -281,70 +257,55 @@ describe("ProbeOrchestrator: stale expiration", () => {
     const snap1 = await orch.probeNow("claude");
     const snap2 = await orch.probeNow("claude");
 
-    // staleSince must be the same timestamp (from first failure).
     expect(snap1.staleSince).not.toBeNull();
     expect(snap2.staleSince).toBe(snap1.staleSince);
   });
 });
 
 describe("ProbeOrchestrator: setProviderBusy", () => {
-  it("busy provider is skipped by the interval tick but probeNow still works", async () => {
+  it("busy provider is skipped by interval but probeNow still works; clearing works", async () => {
     const raw = readFixture("claude", "usage-probe-clean.txt");
     const sessions = new Map<Provider, PTYSession>([["claude", makeFakeSession([raw])]]);
     const orch = makeOrchestrator(["claude"], sessions);
 
-    // Mark busy — interval should skip, but direct probeNow should proceed.
     orch.setProviderBusy("claude", true);
 
-    // probeNow is not blocked by busy; it's the interval that skips.
     const snap = await orch.probeNow("claude");
     expect(snap.stale).toBe(false);
     expect(snap.source).toBe("probe");
-  });
 
-  it("setProviderBusy(false) clears the busy flag", () => {
-    const orch = createProbeOrchestrator({
-      providers: ["claude"],
-      globalStoragePath: tmpDir,
-      sessionFactory: () => makeFakeSession([]),
-    });
-
-    orch.setProviderBusy("claude", true);
+    // Clearing does not throw
     orch.setProviderBusy("claude", false);
-    // No assertion on internal state — verified indirectly by probing succeeding
-    // in subsequent tests. This test just ensures no throw.
   });
 });
 
 describe("ProbeOrchestrator: stop()", () => {
-  it("stop() destroys all active PTY sessions", async () => {
+  it("destroys all active PTY sessions and can be called twice", async () => {
     const session = makeFakeSession([readFixture("claude", "usage-probe-clean.txt")]);
     const sessions = new Map<Provider, PTYSession>([["claude", session]]);
     const orch = makeOrchestrator(["claude"], sessions);
 
-    // Probe to get the session registered internally.
     await orch.probeNow("claude");
     expect(session.isAlive()).toBe(true);
 
     await orch.stop();
     expect(session.isAlive()).toBe(false);
-  });
 
-  it("stop() clears the interval (calling stop twice does not throw)", async () => {
-    const orch = createProbeOrchestrator({
+    // Second stop does not throw
+    const orch2 = createProbeOrchestrator({
       providers: ["claude"],
       globalStoragePath: tmpDir,
       sessionFactory: () => makeFakeSession([]),
     });
-
-    orch.start();
-    await orch.stop();
-    await expect(orch.stop()).resolves.toBeUndefined();
+    orch2.start();
+    await orch2.stop();
+    await expect(orch2.stop()).resolves.toBeUndefined();
   });
 });
 
 describe("ProbeOrchestrator: snapshot persistence", () => {
-  it("persists snapshots.json after a successful probe", async () => {
+  it("persists snapshots.json after successful and stale probes", async () => {
+    // Successful probe
     const raw = readFixture("claude", "usage-probe-clean.txt");
     const sessions = new Map<Provider, PTYSession>([["claude", makeFakeSession([raw])]]);
     const orch = makeOrchestrator(["claude"], sessions);
@@ -360,22 +321,18 @@ describe("ProbeOrchestrator: snapshot persistence", () => {
     expect(claudeSnap).toBeDefined();
     expect(claudeSnap?.provider).toBe("claude");
     expect(claudeSnap?.stale).toBe(false);
-  });
 
-  it("persists snapshots.json after a stale probe", async () => {
-    const sessions = new Map<Provider, PTYSession>([["claude", makeFakeSession(["", ""])]]);
-    const orch = makeOrchestrator(["claude"], sessions);
+    // Stale probe
+    const sessions2 = new Map<Provider, PTYSession>([["claude", makeFakeSession(["", ""])]]);
+    const orch2 = makeOrchestrator(["claude"], sessions2);
 
-    await orch.probeNow("claude");
+    await orch2.probeNow("claude");
 
-    const filePath = path.join(tmpDir, "snapshots.json");
-    expect(fs.existsSync(filePath)).toBe(true);
-
-    const raw2 = fs.readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw2) as Record<string, UsageSnapshot>;
-    const claudeSnap = parsed.claude;
-    expect(claudeSnap?.stale).toBe(true);
-    expect(claudeSnap?.error).not.toBeNull();
+    const raw3 = fs.readFileSync(filePath, "utf8");
+    const parsed2 = JSON.parse(raw3) as Record<string, UsageSnapshot>;
+    const staleSnap = parsed2.claude;
+    expect(staleSnap?.stale).toBe(true);
+    expect(staleSnap?.error).not.toBeNull();
   });
 
   it("getAllSnapshots() reflects the latest probe result", async () => {

@@ -15,12 +15,9 @@ import {
 // ---------------------------------------------------------------------------
 
 describe("module exports", () => {
-  it("exports REDACTION_PATTERNS as a non-empty readonly array", () => {
+  it("exports REDACTION_PATTERNS and BLOCKED_FILE_PATTERNS as non-empty readonly arrays", () => {
     expect(Array.isArray(REDACTION_PATTERNS)).toBe(true);
     expect(REDACTION_PATTERNS.length).toBeGreaterThan(0);
-  });
-
-  it("exports BLOCKED_FILE_PATTERNS as a non-empty readonly array", () => {
     expect(Array.isArray(BLOCKED_FILE_PATTERNS)).toBe(true);
     expect(BLOCKED_FILE_PATTERNS.length).toBeGreaterThan(0);
   });
@@ -31,37 +28,26 @@ describe("module exports", () => {
 // ---------------------------------------------------------------------------
 
 describe("redact — Anthropic API keys", () => {
-  it("redacts a sk-ant- key", () => {
+  it("redacts a single and multiple Anthropic keys", () => {
     const key = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz12345";
-    const result = redact(`My key is ${key}`);
-    expect(result).toBe("My key is [REDACTED]");
-    expect(result).not.toContain(key);
-  });
+    const single = redact(`My key is ${key}`);
+    expect(single).toBe("My key is [REDACTED]");
+    expect(single).not.toContain(key);
 
-  it("redacts multiple Anthropic keys in the same string", () => {
     const k1 = "sk-ant-api03-AAAAAAAAAAAAAAAAAAAAbbbbbbbb";
     const k2 = "sk-ant-api03-ZZZZZZZZZZZZZZZZZZZZzzzzzzzz";
-    const result = redact(`First: ${k1} second: ${k2}`);
-    expect(result).toBe("First: [REDACTED] second: [REDACTED]");
+    expect(redact(`First: ${k1} second: ${k2}`)).toBe("First: [REDACTED] second: [REDACTED]");
   });
 });
 
 describe("redact — OpenAI API keys", () => {
-  it("redacts a sk-proj- key", () => {
-    const key = "sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop";
-    const result = redact(`Authorization: Bearer ${key}`);
-    expect(result).not.toContain(key);
-    expect(result).toContain("[REDACTED]");
-  });
+  it("redacts all three OpenAI key formats (sk-proj-, sk-svcacct-, sk-)", () => {
+    const proj = "sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop";
+    expect(redact(`Authorization: Bearer ${proj}`)).toContain("[REDACTED]");
+    expect(redact(`Authorization: Bearer ${proj}`)).not.toContain(proj);
 
-  it("redacts a sk-svcacct- key", () => {
-    const key = "sk-svcacct-ABCDEFGHIJKLMNOPQRSTUVWXabcdefg";
-    expect(redact(key)).toBe("[REDACTED]");
-  });
-
-  it("redacts a plain sk- key (20+ chars)", () => {
-    const key = "sk-ABCDEFGHIJKLMNOPQRSTUVWXYZabcd";
-    expect(redact(key)).toBe("[REDACTED]");
+    expect(redact("sk-svcacct-ABCDEFGHIJKLMNOPQRSTUVWXabcdefg")).toBe("[REDACTED]");
+    expect(redact("sk-ABCDEFGHIJKLMNOPQRSTUVWXYZabcd")).toBe("[REDACTED]");
   });
 });
 
@@ -75,45 +61,31 @@ describe("redact — Google / GCP API keys", () => {
 });
 
 describe("redact — generic long tokens", () => {
-  it("redacts a long hex string (32+ chars)", () => {
-    const token = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
-    expect(redact(token)).toBe("[REDACTED]");
-  });
-
-  it("redacts a long base64-like string (32+ chars)", () => {
-    const token = "dGhpcyBpcyBhIHRlc3QgdG9rZW4gZm9y";
-    expect(redact(token)).toBe("[REDACTED]");
+  it("redacts long hex and base64-like strings (32+ chars)", () => {
+    expect(redact("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4")).toBe("[REDACTED]");
+    expect(redact("dGhpcyBpcyBhIHRlc3QgdG9rZW4gZm9y")).toBe("[REDACTED]");
   });
 });
 
 describe("redact — preserves normal text", () => {
-  it("does not redact plain English sentences", () => {
-    const text = "Hello, world! This is a normal message.";
-    expect(redact(text)).toBe(text);
-  });
+  it("does not redact plain English sentences, short strings, UUIDs, or URLs", () => {
+    const plain = "Hello, world! This is a normal message.";
+    expect(redact(plain)).toBe(plain);
 
-  it("does not redact short strings", () => {
-    const text = "sk-short";
-    expect(redact(text)).toBe(text);
-  });
+    expect(redact("sk-short")).toBe("sk-short");
 
-  it("does not redact a standard UUID", () => {
     // UUIDs use hyphens as separators; the generic token pattern excludes hyphens
     // so the run is broken into segments of 8-12 chars — all well below 32.
     const uuid = "550e8400-e29b-41d4-a716-446655440000";
-    const result = redact(uuid);
-    expect(result).toBe(uuid);
-  });
+    expect(redact(uuid)).toBe(uuid);
 
-  it("does not redact a normal URL", () => {
     const url = "https://example.com/api/v1/resource";
     expect(redact(url)).toBe(url);
   });
 
   it("preserves surrounding text when redacting an embedded key", () => {
     const key = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz12345";
-    const result = redact(`Key: ${key}\nEnd of message.`);
-    expect(result).toBe("Key: [REDACTED]\nEnd of message.");
+    expect(redact(`Key: ${key}\nEnd of message.`)).toBe("Key: [REDACTED]\nEnd of message.");
   });
 });
 
@@ -156,11 +128,8 @@ describe("isBlockedAttachment — blocked files", () => {
     });
   }
 
-  it("blocks a path whose basename is .env", () => {
+  it("blocks paths whose basename matches a blocked pattern", () => {
     expect(isBlockedAttachment("/home/user/project/.env")).toBe(true);
-  });
-
-  it("blocks a path whose basename is id_rsa", () => {
     expect(isBlockedAttachment("/home/user/.ssh/id_rsa")).toBe(true);
   });
 });
@@ -199,18 +168,15 @@ describe("validateAttachmentPath", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("accepts a file inside the project root", async () => {
-    const filePath = path.join(tmpDir, "src", "main.ts");
-    // File does not need to exist for the lexical containment check.
-    const result = await validateAttachmentPath(filePath, tmpDir);
-    expect(result.safe).toBe(true);
-    expect(result.reason).toBeUndefined();
-  });
+  it("accepts a file inside the project root and at the root itself", async () => {
+    const nested = path.join(tmpDir, "src", "main.ts");
+    const nestedResult = await validateAttachmentPath(nested, tmpDir);
+    expect(nestedResult.safe).toBe(true);
+    expect(nestedResult.reason).toBeUndefined();
 
-  it("accepts a file at the project root itself", async () => {
-    const filePath = path.join(tmpDir, "README.md");
-    const result = await validateAttachmentPath(filePath, tmpDir);
-    expect(result.safe).toBe(true);
+    const atRoot = path.join(tmpDir, "README.md");
+    const atRootResult = await validateAttachmentPath(atRoot, tmpDir);
+    expect(atRootResult.safe).toBe(true);
   });
 
   it("rejects a path outside the project root (directory traversal)", async () => {

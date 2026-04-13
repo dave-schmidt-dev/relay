@@ -11,12 +11,9 @@ import {
 // ---------------------------------------------------------------------------
 
 describe("module exports", () => {
-  it("exports DEFAULT_RULES as a non-empty readonly array", () => {
+  it("exports DEFAULT_RULES as a non-empty readonly array and classifyTask as a function", () => {
     expect(Array.isArray(DEFAULT_RULES)).toBe(true);
     expect(DEFAULT_RULES.length).toBeGreaterThan(0);
-  });
-
-  it("exports classifyTask as a function", () => {
     expect(typeof classifyTask).toBe("function");
   });
 });
@@ -26,97 +23,61 @@ describe("module exports", () => {
 // ---------------------------------------------------------------------------
 
 describe("classifyTask — plan prompts", () => {
-  it("classifies a clear planning prompt as 'plan'", () => {
-    const result = classifyTask("Create a plan for migrating our database to Postgres.");
-    expect(result.role).toBe("plan");
-  });
+  it("classifies all plan prompts as 'plan' with high confidence for obvious ones", () => {
+    expect(classifyTask("Create a plan for migrating our database to Postgres.").role).toBe("plan");
+    expect(classifyTask("Design the architecture for the new payments service.").role).toBe("plan");
 
-  it("classifies 'design the architecture' as 'plan'", () => {
-    const result = classifyTask("Design the architecture for the new payments service.");
-    expect(result.role).toBe("plan");
-  });
-
-  it("returns high confidence for an obvious plan prompt", () => {
-    const result = classifyTask("What's the best approach to architect the new API?");
-    expect(result.role).toBe("plan");
-    expect(result.confidence).toBeGreaterThan(0.5);
+    const obvious = classifyTask("What's the best approach to architect the new API?");
+    expect(obvious.role).toBe("plan");
+    expect(obvious.confidence).toBeGreaterThan(0.5);
   });
 });
 
 describe("classifyTask — implement prompts", () => {
-  it("classifies 'write a function' prompt as 'implement'", () => {
-    const result = classifyTask("Write a function that parses ISO 8601 timestamps.");
-    expect(result.role).toBe("implement");
-  });
+  it("classifies all implement prompts as 'implement' with high confidence for obvious ones", () => {
+    expect(classifyTask("Write a function that parses ISO 8601 timestamps.").role).toBe(
+      "implement",
+    );
+    expect(
+      classifyTask("Fix the bug in the payment handler that causes double charges.").role,
+    ).toBe("implement");
+    expect(classifyTask("Implement the retry logic for failed API calls.").role).toBe("implement");
 
-  it("classifies 'fix the bug' prompt as 'implement'", () => {
-    const result = classifyTask("Fix the bug in the payment handler that causes double charges.");
-    expect(result.role).toBe("implement");
-  });
-
-  it("classifies 'implement the retry logic' as 'implement'", () => {
-    const result = classifyTask("Implement the retry logic for failed API calls.");
-    expect(result.role).toBe("implement");
-  });
-
-  it("returns high confidence for an obvious implement prompt", () => {
-    const result = classifyTask("Write a function to validate email addresses.");
-    expect(result.confidence).toBeGreaterThan(0.5);
+    const obvious = classifyTask("Write a function to validate email addresses.");
+    expect(obvious.confidence).toBeGreaterThan(0.5);
   });
 });
 
 describe("classifyTask — review prompts", () => {
-  it("classifies 'review this code' as 'review'", () => {
-    const result = classifyTask("Review this code and tell me if there are any issues.");
-    expect(result.role).toBe("review");
-  });
+  it("classifies all review prompts as 'review' with high confidence for obvious ones", () => {
+    expect(classifyTask("Review this code and tell me if there are any issues.").role).toBe(
+      "review",
+    );
+    expect(classifyTask("Please do a code review of the authentication module.").role).toBe(
+      "review",
+    );
+    expect(classifyTask("What do you think about this implementation?").role).toBe("review");
 
-  it("classifies 'code review' prompt as 'review'", () => {
-    const result = classifyTask("Please do a code review of the authentication module.");
-    expect(result.role).toBe("review");
-  });
-
-  it("classifies 'what do you think' prompt as 'review'", () => {
-    const result = classifyTask("What do you think about this implementation?");
-    expect(result.role).toBe("review");
-  });
-
-  it("returns high confidence for an obvious review prompt", () => {
     // "review this" pattern matches → 2 pts; "audit" + "evaluate" keywords → 2 pts more.
-    const result = classifyTask("Review this PR and evaluate and audit the changes carefully.");
-    expect(result.role).toBe("review");
-    expect(result.confidence).toBeGreaterThan(0.5);
+    const obvious = classifyTask("Review this PR and evaluate and audit the changes carefully.");
+    expect(obvious.role).toBe("review");
+    expect(obvious.confidence).toBeGreaterThan(0.5);
   });
 });
 
 describe("classifyTask — research prompts", () => {
-  it("classifies 'what is X' as 'research'", () => {
-    const result = classifyTask("What is the difference between TCP and UDP?");
-    expect(result.role).toBe("research");
-  });
+  it("classifies all research prompts as 'research' with high confidence for obvious ones", () => {
+    expect(classifyTask("What is the difference between TCP and UDP?").role).toBe("research");
+    expect(classifyTask("How does connection pooling work in PostgreSQL?").role).toBe("research");
+    expect(classifyTask("Compare React and Vue and help me choose one.").role).toBe("research");
+    expect(classifyTask("Explain how TLS handshakes work.").role).toBe("research");
 
-  it("classifies 'how does X work' as 'research'", () => {
-    const result = classifyTask("How does connection pooling work in PostgreSQL?");
-    expect(result.role).toBe("research");
-  });
-
-  it("classifies 'compare X and Y' as 'research'", () => {
-    const result = classifyTask("Compare React and Vue and help me choose one.");
-    expect(result.role).toBe("research");
-  });
-
-  it("classifies 'explain X' as 'research'", () => {
-    const result = classifyTask("Explain how TLS handshakes work.");
-    expect(result.role).toBe("research");
-  });
-
-  it("returns high confidence for an obvious research prompt", () => {
     // Multiple research signals: pattern "compare .+ and", keywords "summarize", "compare".
-    const result = classifyTask(
+    const obvious = classifyTask(
       "Summarize and compare REST and GraphQL so I can explain the trade-offs.",
     );
-    expect(result.role).toBe("research");
-    expect(result.confidence).toBeGreaterThan(0.5);
+    expect(obvious.role).toBe("research");
+    expect(obvious.confidence).toBeGreaterThan(0.5);
   });
 });
 
@@ -125,16 +86,14 @@ describe("classifyTask — research prompts", () => {
 // ---------------------------------------------------------------------------
 
 describe("classifyTask — custom / unrecognizable prompts", () => {
-  it("returns 'custom' with confidence 0.0 for an unrecognizable prompt", () => {
-    const result = classifyTask("Zorbax flibbertigibbet wumple.");
-    expect(result.role).toBe("custom");
-    expect(result.confidence).toBe(0.0);
-  });
+  it("returns 'custom' with confidence 0.0 for unrecognizable prompts and empty string", () => {
+    const gibberish = classifyTask("Zorbax flibbertigibbet wumple.");
+    expect(gibberish.role).toBe("custom");
+    expect(gibberish.confidence).toBe(0.0);
 
-  it("handles empty string", () => {
-    const result = classifyTask("");
-    expect(result.role).toBe("custom");
-    expect(result.confidence).toBe(0.0);
+    const empty = classifyTask("");
+    expect(empty.role).toBe("custom");
+    expect(empty.confidence).toBe(0.0);
   });
 });
 
@@ -157,7 +116,7 @@ describe("classifyTask — custom rules override defaults", () => {
     expect(result.confidence).toBeGreaterThan(0.0);
   });
 
-  it("ignores default rules entirely when custom rules are supplied", () => {
+  it("respects role weight when custom weight is higher", () => {
     const implementOnlyRules: readonly ClassificationRule[] = [
       {
         role: "implement",
@@ -167,12 +126,10 @@ describe("classifyTask — custom rules override defaults", () => {
       },
     ];
     // "plan" keywords are not in the custom ruleset — only "build" is.
-    const result = classifyTask("Design a plan and build the feature.", implementOnlyRules);
+    const noDefaultPlan = classifyTask("Design a plan and build the feature.", implementOnlyRules);
     // Only 'implement' rule exists; "build" matches → implement wins.
-    expect(result.role).toBe("implement");
-  });
+    expect(noDefaultPlan.role).toBe("implement");
 
-  it("respects role weight when custom weight is higher", () => {
     const weightedRules: readonly ClassificationRule[] = [
       {
         role: "plan",
@@ -188,8 +145,8 @@ describe("classifyTask — custom rules override defaults", () => {
       },
     ];
     // Both rules match on "design" but 'implement' has 5× weight.
-    const result = classifyTask("design the feature", weightedRules);
-    expect(result.role).toBe("implement");
+    const weighted = classifyTask("design the feature", weightedRules);
+    expect(weighted.role).toBe("implement");
   });
 });
 
@@ -236,26 +193,22 @@ describe("classifyTask — return shape", () => {
 // ---------------------------------------------------------------------------
 
 describe("classifyTask — performance", () => {
-  it("classifies a prompt in under 10ms", () => {
-    const prompt =
+  it("classifies both a normal and very long prompt in under 10ms each", () => {
+    const normalPrompt =
       "Please create a detailed plan for implementing the new authentication service " +
       "using OAuth2 and review the existing code before we start writing anything.";
-    const start = performance.now();
-    classifyTask(prompt);
-    const elapsed = performance.now() - start;
-    expect(elapsed).toBeLessThan(10);
-  });
+    const start1 = performance.now();
+    classifyTask(normalPrompt);
+    expect(performance.now() - start1).toBeLessThan(10);
 
-  it("handles a very long prompt under 10ms", () => {
     // ~5 000-character prompt to stress-test the keyword loop.
-    const prompt = (
+    const longPrompt = (
       "Plan, design, architect, implement, build, create, write, add, code, " +
       "develop, fix, bug, review, audit, check, inspect, evaluate, assess, " +
       "research, find, search, investigate, compare, explore, summarize, explain. "
     ).repeat(40);
-    const start = performance.now();
-    classifyTask(prompt);
-    const elapsed = performance.now() - start;
-    expect(elapsed).toBeLessThan(10);
+    const start2 = performance.now();
+    classifyTask(longPrompt);
+    expect(performance.now() - start2).toBeLessThan(10);
   });
 });

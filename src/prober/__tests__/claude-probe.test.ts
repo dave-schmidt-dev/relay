@@ -31,46 +31,22 @@ describe("parseClaudeUsage: clean fixture (usage-probe-clean.txt)", () => {
   // Parse once at describe scope -- parseClaudeUsage is synchronous and pure.
   const snapshot: ClaudeUsageSnapshot = parseClaudeUsage(raw);
 
-  it("does not throw", () => {
+  it("parses all fields correctly", () => {
     expect(() => parseClaudeUsage(raw)).not.toThrow();
-  });
-
-  it("sessionPercentLeft is 73 (100 - 27% used)", () => {
+    // session: 100 - 27% used = 73
     expect(snapshot.sessionPercentLeft).toBe(73);
-  });
-
-  it("weeklyPercentLeft is 64 (64% left)", () => {
+    // weekly: 64% left (no subtraction)
     expect(snapshot.weeklyPercentLeft).toBe(64);
-  });
-
-  it("opusPercentLeft is 82 (100 - 18% used)", () => {
+    // opus: 100 - 18% used = 82
     expect(snapshot.opusPercentLeft).toBe(82);
-  });
-
-  it("primaryReset is extracted (session reset)", () => {
     // Fixture line: "Resets in 3h 02m"
     expect(snapshot.primaryReset).toBe("in 3h 02m");
-  });
-
-  it("secondaryReset is extracted (weekly reset)", () => {
     // Fixture line: "Resets on Mar 17, 8:00AM"
     expect(snapshot.secondaryReset).toBe("on Mar 17, 8:00AM");
-  });
-
-  it("opusReset is extracted", () => {
     // Fixture line: "Resets on Mar 17, 8:00AM" (same date as weekly)
     expect(snapshot.opusReset).toBe("on Mar 17, 8:00AM");
-  });
-
-  it("accountEmail is extracted", () => {
     expect(snapshot.accountEmail).toBe("dave@example.com");
-  });
-
-  it("accountOrganization is extracted", () => {
     expect(snapshot.accountOrganization).toBe("Zero Delta LLC");
-  });
-
-  it("rawText is the original input", () => {
     expect(snapshot.rawText).toBe(raw);
   });
 });
@@ -85,56 +61,34 @@ describe("parseClaudeUsage: live-style fixture (usage-probe-live-style.txt)", ()
   const raw = readFixture("claude", "usage-probe-live-style.txt");
   const snapshot: ClaudeUsageSnapshot = parseClaudeUsage(raw);
 
-  it("does not throw", () => {
+  it("parses all fields correctly", () => {
     expect(() => parseClaudeUsage(raw)).not.toThrow();
-  });
-
-  it("sessionPercentLeft is 30 (100 - 70%used)", () => {
+    // session: 100 - 70% used = 30
     expect(snapshot.sessionPercentLeft).toBe(30);
-  });
-
-  it("weeklyPercentLeft is 52 (100 - 48%used)", () => {
+    // weekly: 100 - 48% used = 52
     expect(snapshot.weeklyPercentLeft).toBe(52);
-  });
-
-  it("opusPercentLeft is null (no Opus section in fixture)", () => {
     expect(snapshot.opusPercentLeft).toBeNull();
-  });
-
-  it("rawText is the original input", () => {
     expect(snapshot.rawText).toBe(raw);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Error detection: rate-limit
+// Error detection: rate-limit and subscription gate
 // ---------------------------------------------------------------------------
 
-describe("parseClaudeUsage: rate-limit error (usage-error-rate-limit.txt)", () => {
-  it("throws on rate-limited usage text", () => {
+describe("parseClaudeUsage: error detection", () => {
+  it("throws on rate-limit fixture and inline string", () => {
     const raw = readFixture("claude", "usage-error-rate-limit.txt");
     expect(() => parseClaudeUsage(raw)).toThrow(/Claude usage error detected/i);
-  });
-
-  it("throws on inline 'rate limited' string", () => {
     expect(() => parseClaudeUsage("Failed to load usage data: rate limited")).toThrow(
       /Claude usage error detected/i,
     );
   });
-});
 
-// ---------------------------------------------------------------------------
-// Error detection: subscription gate
-// ---------------------------------------------------------------------------
-
-describe("parseClaudeUsage: subscription error (usage-error-subscription.txt)", () => {
-  it("throws on subscription-gate usage text", () => {
+  it("throws on subscription-gate fixture and correct spelling", () => {
     const raw = readFixture("claude", "usage-error-subscription.txt");
     // Fixture contains the "vilable" typo from real Claude output
     expect(() => parseClaudeUsage(raw)).toThrow(/Claude usage error detected/i);
-  });
-
-  it("throws on correct spelling too (forward-compatible)", () => {
     expect(() => parseClaudeUsage("/usage is only available for subscription plans")).toThrow(
       /Claude usage error detected/i,
     );
@@ -146,44 +100,32 @@ describe("parseClaudeUsage: subscription error (usage-error-subscription.txt)", 
 // ---------------------------------------------------------------------------
 
 describe("parseClaudeUsage: edge cases", () => {
-  it("throws on empty input", () => {
+  it("throws on empty and whitespace-only input", () => {
     expect(() => parseClaudeUsage("")).toThrow(/empty/i);
-  });
-
-  it("throws on whitespace-only input", () => {
     expect(() => parseClaudeUsage("   \n\n   ")).toThrow(/empty/i);
   });
 
-  it("returns null fields for a minimal valid line that has no percent data", () => {
-    const snapshot = parseClaudeUsage("Settings: Account Usage");
+  it("returns null fields and preserves rawText for minimal input", () => {
+    const text = "Settings: Account Usage\nSome other line";
+    const snapshot = parseClaudeUsage(text);
     expect(snapshot.sessionPercentLeft).toBeNull();
     expect(snapshot.weeklyPercentLeft).toBeNull();
     expect(snapshot.opusPercentLeft).toBeNull();
-  });
-
-  it("handles 'X% left' correctly (no subtraction)", () => {
-    const snapshot = parseClaudeUsage("Current session\n64% left\nResets in 1h 00m");
-    expect(snapshot.sessionPercentLeft).toBe(64);
-  });
-
-  it("handles 'X% used' correctly (100 - X)", () => {
-    const snapshot = parseClaudeUsage("Current session\n30% used\nResets in 1h 00m");
-    expect(snapshot.sessionPercentLeft).toBe(70);
-  });
-
-  it("handles 0% used (full quota remaining)", () => {
-    const snapshot = parseClaudeUsage("Current session\n0% used");
-    expect(snapshot.sessionPercentLeft).toBe(100);
-  });
-
-  it("handles 100% used (no quota remaining)", () => {
-    const snapshot = parseClaudeUsage("Current session\n100% used");
-    expect(snapshot.sessionPercentLeft).toBe(0);
-  });
-
-  it("preserves rawText even when fields are missing", () => {
-    const text = "Settings: Account Usage\nSome other line";
-    const snapshot = parseClaudeUsage(text);
     expect(snapshot.rawText).toBe(text);
+  });
+
+  it("handles % left, % used, boundary values correctly", () => {
+    // 64% left — no subtraction
+    expect(parseClaudeUsage("Current session\n64% left\nResets in 1h 00m").sessionPercentLeft).toBe(
+      64,
+    );
+    // 30% used → 100 - 30 = 70
+    expect(parseClaudeUsage("Current session\n30% used\nResets in 1h 00m").sessionPercentLeft).toBe(
+      70,
+    );
+    // 0% used → full quota remaining
+    expect(parseClaudeUsage("Current session\n0% used").sessionPercentLeft).toBe(100);
+    // 100% used → no quota remaining
+    expect(parseClaudeUsage("Current session\n100% used").sessionPercentLeft).toBe(0);
   });
 });

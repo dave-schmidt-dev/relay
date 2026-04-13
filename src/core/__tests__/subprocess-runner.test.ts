@@ -68,20 +68,18 @@ function run(
 // ---------------------------------------------------------------------------
 
 describe("spawnSubprocess — stdout capture", () => {
-  it("captures stdout from a simple echo command", async () => {
-    const result = await run(["node", "-e", "process.stdout.write('hello world')"]);
-    expect(result.stdout).toBe("hello world");
-    expect(result.error).toBeNull();
-  });
+  it("captures stdout: simple output and multiple chunks", async () => {
+    const simple = await run(["node", "-e", "process.stdout.write('hello world')"]);
+    expect(simple.stdout).toBe("hello world");
+    expect(simple.error).toBeNull();
 
-  it("accumulates multiple stdout chunks", async () => {
-    const script = `
-      process.stdout.write('line1\\n');
-      process.stdout.write('line2\\n');
-    `;
-    const result = await run(["node", "-e", script]);
-    expect(result.stdout).toContain("line1");
-    expect(result.stdout).toContain("line2");
+    const multi = await run([
+      "node",
+      "-e",
+      "process.stdout.write('line1\\n'); process.stdout.write('line2\\n')",
+    ]);
+    expect(multi.stdout).toContain("line1");
+    expect(multi.stdout).toContain("line2");
   });
 });
 
@@ -90,20 +88,18 @@ describe("spawnSubprocess — stdout capture", () => {
 // ---------------------------------------------------------------------------
 
 describe("spawnSubprocess — stderr capture", () => {
-  it("captures stderr separately from stdout", async () => {
-    const script = `
-      process.stdout.write('out');
-      process.stderr.write('err');
-    `;
-    const result = await run(["node", "-e", script]);
-    expect(result.stdout).toBe("out");
-    expect(result.stderr).toBe("err");
-  });
+  it("captures stderr separately from stdout and does not bleed into stdout", async () => {
+    const mixed = await run([
+      "node",
+      "-e",
+      "process.stdout.write('out'); process.stderr.write('err')",
+    ]);
+    expect(mixed.stdout).toBe("out");
+    expect(mixed.stderr).toBe("err");
 
-  it("stderr does not bleed into stdout", async () => {
-    const result = await run(["node", "-e", "process.stderr.write('only-stderr')"]);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("only-stderr");
+    const stderrOnly = await run(["node", "-e", "process.stderr.write('only-stderr')"]);
+    expect(stderrOnly.stdout).toBe("");
+    expect(stderrOnly.stderr).toBe("only-stderr");
   });
 });
 
@@ -112,15 +108,13 @@ describe("spawnSubprocess — stderr capture", () => {
 // ---------------------------------------------------------------------------
 
 describe("spawnSubprocess — exit codes", () => {
-  it("reports exit code 0 for a successful process", async () => {
-    const result = await run(["node", "-e", "process.exit(0)"]);
-    expect(result.code).toBe(0);
-    expect(result.error).toBeNull();
-  });
+  it("reports exit code 0 for success and the correct non-zero code on failure", async () => {
+    const success = await run(["node", "-e", "process.exit(0)"]);
+    expect(success.code).toBe(0);
+    expect(success.error).toBeNull();
 
-  it("reports the correct non-zero exit code on failure", async () => {
-    const result = await run(["node", "-e", "process.exit(42)"]);
-    expect(result.code).toBe(42);
+    const failure = await run(["node", "-e", "process.exit(42)"]);
+    expect(failure.code).toBe(42);
   });
 
   it("reports exit code 1 for an uncaught exception", async () => {
@@ -134,9 +128,7 @@ describe("spawnSubprocess — exit codes", () => {
 // ---------------------------------------------------------------------------
 
 describe("spawnSubprocess — environment allowlist", () => {
-  it("only passes allowlisted vars to the child (plus PATH and HOME)", async () => {
-    // Inject a distinctive env var into the parent, then check the child
-    // sees only what we allow.
+  it("only passes PATH and HOME when allowlist is empty (unlisted vars absent)", async () => {
     const sentinel = "RELAY_TEST_SENTINEL_XYZ";
     const originalValue = process.env[sentinel];
     process.env[sentinel] = "should-not-appear";
@@ -146,13 +138,8 @@ describe("spawnSubprocess — environment allowlist", () => {
         ["node", "-e", "process.stdout.write(JSON.stringify(process.env))"],
         { envAllowlist: [] },
       );
-
       const childEnv = JSON.parse(result.stdout) as Record<string, string>;
-
-      // Sentinel must NOT be present — it wasn't in the allowlist.
       expect(childEnv[sentinel]).toBeUndefined();
-
-      // PATH and HOME are always forwarded.
       expect(childEnv.PATH).toBeDefined();
       expect(childEnv.HOME).toBeDefined();
     } finally {
@@ -164,32 +151,11 @@ describe("spawnSubprocess — environment allowlist", () => {
     }
   });
 
-  it("passes explicitly allowlisted vars to the child", async () => {
-    const key = "RELAY_ALLOWED_VAR";
-    const originalValue = process.env[key];
-    process.env[key] = "hello-from-parent";
-
-    try {
-      const result = await run(
-        ["node", "-e", "process.stdout.write(JSON.stringify(process.env))"],
-        { envAllowlist: [key] },
-      );
-
-      const childEnv = JSON.parse(result.stdout) as Record<string, string>;
-      expect(childEnv[key]).toBe("hello-from-parent");
-    } finally {
-      if (originalValue === undefined) {
-        Reflect.deleteProperty(process.env, key);
-      } else {
-        process.env[key] = originalValue;
-      }
-    }
-  });
-
-  it("does not include unlisted vars even when the allowlist is non-empty", async () => {
-    const allowed = "RELAY_ALLOWED";
+  it("passes explicitly allowlisted vars and excludes non-listed vars when allowlist is non-empty", async () => {
+    const allowed = "RELAY_ALLOWED_VAR";
     const blocked = "RELAY_BLOCKED_XYZ";
-    process.env[allowed] = "yes";
+    const originalAllowed = process.env[allowed];
+    process.env[allowed] = "hello-from-parent";
     process.env[blocked] = "no";
 
     try {
@@ -197,12 +163,15 @@ describe("spawnSubprocess — environment allowlist", () => {
         ["node", "-e", "process.stdout.write(JSON.stringify(process.env))"],
         { envAllowlist: [allowed] },
       );
-
       const childEnv = JSON.parse(result.stdout) as Record<string, string>;
-      expect(childEnv[allowed]).toBe("yes");
+      expect(childEnv[allowed]).toBe("hello-from-parent");
       expect(childEnv[blocked]).toBeUndefined();
     } finally {
-      Reflect.deleteProperty(process.env, allowed);
+      if (originalAllowed === undefined) {
+        Reflect.deleteProperty(process.env, allowed);
+      } else {
+        process.env[allowed] = originalAllowed;
+      }
       Reflect.deleteProperty(process.env, blocked);
     }
   });

@@ -146,61 +146,59 @@ function assertSuggestion(result: RoutingSuggestion | null): RoutingSuggestion {
 // ---------------------------------------------------------------------------
 
 describe("getEffectiveRemaining", () => {
-  it("returns minimum of Claude quotas (session < weekly)", () => {
-    const snap = makeClaudeSnapshot({ sessionPercentLeft: 40, weeklyPercentLeft: 90 });
-    expect(getEffectiveRemaining(snap)).toBe(40);
+  it("returns minimum of Claude quotas (session vs weekly)", () => {
+    expect(
+      getEffectiveRemaining(makeClaudeSnapshot({ sessionPercentLeft: 40, weeklyPercentLeft: 90 })),
+    ).toBe(40);
+    expect(
+      getEffectiveRemaining(makeClaudeSnapshot({ sessionPercentLeft: 90, weeklyPercentLeft: 30 })),
+    ).toBe(30);
   });
 
-  it("returns minimum of Claude quotas (weekly < session)", () => {
-    const snap = makeClaudeSnapshot({ sessionPercentLeft: 90, weeklyPercentLeft: 30 });
-    expect(getEffectiveRemaining(snap)).toBe(30);
+  it("returns minimum of Codex quotas (fiveHour vs weekly)", () => {
+    expect(
+      getEffectiveRemaining(makeCodexSnapshot({ fiveHourPercentLeft: 20, weeklyPercentLeft: 85 })),
+    ).toBe(20);
+    expect(
+      getEffectiveRemaining(makeCodexSnapshot({ fiveHourPercentLeft: 90, weeklyPercentLeft: 5 })),
+    ).toBe(5);
+  });
+
+  it("returns minimum of Gemini quotas (flash vs pro)", () => {
+    expect(
+      getEffectiveRemaining(makeGeminiSnapshot({ flashPercentLeft: 30, proPercentLeft: 75 })),
+    ).toBe(30);
+    expect(
+      getEffectiveRemaining(makeGeminiSnapshot({ flashPercentLeft: 90, proPercentLeft: 15 })),
+    ).toBe(15);
   });
 
   it("includes opusPercentLeft in Claude minimum calculation", () => {
-    const snap = makeClaudeSnapshot({
-      sessionPercentLeft: 80,
-      weeklyPercentLeft: 90,
-      opusPercentLeft: 10,
-    });
-    expect(getEffectiveRemaining(snap)).toBe(10);
+    expect(
+      getEffectiveRemaining(
+        makeClaudeSnapshot({ sessionPercentLeft: 80, weeklyPercentLeft: 90, opusPercentLeft: 10 }),
+      ),
+    ).toBe(10);
   });
 
   it("skips null Claude quotas and uses remaining values", () => {
-    const snap = makeClaudeSnapshot({
-      sessionPercentLeft: 60,
-      weeklyPercentLeft: null,
-      opusPercentLeft: null,
-    });
-    expect(getEffectiveRemaining(snap)).toBe(60);
+    expect(
+      getEffectiveRemaining(
+        makeClaudeSnapshot({
+          sessionPercentLeft: 60,
+          weeklyPercentLeft: null,
+          opusPercentLeft: null,
+        }),
+      ),
+    ).toBe(60);
   });
 
-  it("returns minimum of Codex quotas (fiveHour < weekly)", () => {
-    const snap = makeCodexSnapshot({ fiveHourPercentLeft: 20, weeklyPercentLeft: 85 });
-    expect(getEffectiveRemaining(snap)).toBe(20);
-  });
+  it("returns 0 for exhausted, null data, and all-null quota values", () => {
+    expect(
+      getEffectiveRemaining(makeClaudeSnapshot({ exhausted: true, sessionPercentLeft: 80 })),
+    ).toBe(0);
 
-  it("returns minimum of Codex quotas (weekly < fiveHour)", () => {
-    const snap = makeCodexSnapshot({ fiveHourPercentLeft: 90, weeklyPercentLeft: 5 });
-    expect(getEffectiveRemaining(snap)).toBe(5);
-  });
-
-  it("returns minimum of Gemini quotas (flash < pro)", () => {
-    const snap = makeGeminiSnapshot({ flashPercentLeft: 30, proPercentLeft: 75 });
-    expect(getEffectiveRemaining(snap)).toBe(30);
-  });
-
-  it("returns minimum of Gemini quotas (pro < flash)", () => {
-    const snap = makeGeminiSnapshot({ flashPercentLeft: 90, proPercentLeft: 15 });
-    expect(getEffectiveRemaining(snap)).toBe(15);
-  });
-
-  it("returns 0 when snapshot is exhausted regardless of data values", () => {
-    const snap = makeClaudeSnapshot({ exhausted: true, sessionPercentLeft: 80 });
-    expect(getEffectiveRemaining(snap)).toBe(0);
-  });
-
-  it("returns 0 when data is null", () => {
-    const snap: UsageSnapshot = {
+    const nullData: UsageSnapshot = {
       provider: "claude",
       probedAt: new Date().toISOString(),
       source: "cached",
@@ -210,16 +208,17 @@ describe("getEffectiveRemaining", () => {
       staleSince: new Date().toISOString(),
       data: null,
     };
-    expect(getEffectiveRemaining(snap)).toBe(0);
-  });
+    expect(getEffectiveRemaining(nullData)).toBe(0);
 
-  it("returns 0 when all quota values are null", () => {
-    const snap = makeClaudeSnapshot({
-      sessionPercentLeft: null,
-      weeklyPercentLeft: null,
-      opusPercentLeft: null,
-    });
-    expect(getEffectiveRemaining(snap)).toBe(0);
+    expect(
+      getEffectiveRemaining(
+        makeClaudeSnapshot({
+          sessionPercentLeft: null,
+          weeklyPercentLeft: null,
+          opusPercentLeft: null,
+        }),
+      ),
+    ).toBe(0);
   });
 });
 
@@ -228,23 +227,11 @@ describe("getEffectiveRemaining", () => {
 // ---------------------------------------------------------------------------
 
 describe("DEFAULT_AFFINITY_RANKINGS", () => {
-  it("has claude first for plan", () => {
+  it("has the correct first provider for each role", () => {
     expect(DEFAULT_AFFINITY_RANKINGS.plan[0]).toBe("claude");
-  });
-
-  it("has codex first for implement", () => {
     expect(DEFAULT_AFFINITY_RANKINGS.implement[0]).toBe("codex");
-  });
-
-  it("has codex first for review", () => {
     expect(DEFAULT_AFFINITY_RANKINGS.review[0]).toBe("codex");
-  });
-
-  it("has gemini first for research", () => {
     expect(DEFAULT_AFFINITY_RANKINGS.research[0]).toBe("gemini");
-  });
-
-  it("has claude first for custom", () => {
     expect(DEFAULT_AFFINITY_RANKINGS.custom[0]).toBe("claude");
   });
 
@@ -267,39 +254,15 @@ describe("DEFAULT_AFFINITY_RANKINGS", () => {
 // ---------------------------------------------------------------------------
 
 describe("routeTask — basic routing", () => {
-  it("suggests the highest-affinity provider when all have equal usage", () => {
-    // For 'plan', affinity is claude > codex > gemini.
-    // All providers have the same effective remaining (80%).
+  it("suggests the affinity winner for each role when all have equal usage", () => {
     const snapshots = makeSnapshots({
       claude: makeClaudeSnapshot({ sessionPercentLeft: 80, weeklyPercentLeft: 80 }),
       codex: makeCodexSnapshot({ fiveHourPercentLeft: 80, weeklyPercentLeft: 80 }),
       gemini: makeGeminiSnapshot({ flashPercentLeft: 80, proPercentLeft: 80 }),
     });
-
-    const result = assertSuggestion(routeTask("plan", snapshots));
-    expect(result.suggested).toBe("claude");
-  });
-
-  it("suggests codex for implement when all providers have equal usage", () => {
-    const snapshots = makeSnapshots({
-      claude: makeClaudeSnapshot({ sessionPercentLeft: 80, weeklyPercentLeft: 80 }),
-      codex: makeCodexSnapshot({ fiveHourPercentLeft: 80, weeklyPercentLeft: 80 }),
-      gemini: makeGeminiSnapshot({ flashPercentLeft: 80, proPercentLeft: 80 }),
-    });
-
-    const result = assertSuggestion(routeTask("implement", snapshots));
-    expect(result.suggested).toBe("codex");
-  });
-
-  it("suggests gemini for research when all providers have equal usage", () => {
-    const snapshots = makeSnapshots({
-      claude: makeClaudeSnapshot({ sessionPercentLeft: 80, weeklyPercentLeft: 80 }),
-      codex: makeCodexSnapshot({ fiveHourPercentLeft: 80, weeklyPercentLeft: 80 }),
-      gemini: makeGeminiSnapshot({ flashPercentLeft: 80, proPercentLeft: 80 }),
-    });
-
-    const result = assertSuggestion(routeTask("research", snapshots));
-    expect(result.suggested).toBe("gemini");
+    expect(assertSuggestion(routeTask("plan", snapshots)).suggested).toBe("claude");
+    expect(assertSuggestion(routeTask("implement", snapshots)).suggested).toBe("codex");
+    expect(assertSuggestion(routeTask("research", snapshots)).suggested).toBe("gemini");
   });
 
   it("returns a RoutingSuggestion with scores for all three providers", () => {
@@ -308,7 +271,6 @@ describe("routeTask — basic routing", () => {
       codex: makeCodexSnapshot(),
       gemini: makeGeminiSnapshot(),
     });
-
     const result = assertSuggestion(routeTask("plan", snapshots));
     expect(result.scores).toHaveLength(3);
     const providers = result.scores.map((s: ProviderScore) => s.provider);
@@ -323,9 +285,7 @@ describe("routeTask — basic routing", () => {
       codex: makeCodexSnapshot(),
       gemini: makeGeminiSnapshot(),
     });
-
-    const result = assertSuggestion(routeTask("implement", snapshots));
-    expect(result.reason.length).toBeGreaterThan(0);
+    expect(assertSuggestion(routeTask("implement", snapshots)).reason.length).toBeGreaterThan(0);
   });
 });
 
@@ -334,28 +294,22 @@ describe("routeTask — basic routing", () => {
 // ---------------------------------------------------------------------------
 
 describe("routeTask — exhausted providers", () => {
-  it("switches to second choice when top choice is exhausted", () => {
-    // For 'plan': claude > codex > gemini. Claude is exhausted.
-    const snapshots = makeSnapshots({
+  it("switches to second choice when top choice is exhausted, and excludes 0% remaining providers", () => {
+    // For 'plan': claude > codex > gemini. Claude is exhausted → codex.
+    const exhaustedClaude = makeSnapshots({
       claude: makeClaudeSnapshot({ exhausted: true }),
       codex: makeCodexSnapshot({ fiveHourPercentLeft: 80, weeklyPercentLeft: 80 }),
       gemini: makeGeminiSnapshot(),
     });
+    expect(assertSuggestion(routeTask("plan", exhaustedClaude)).suggested).toBe("codex");
 
-    const result = assertSuggestion(routeTask("plan", snapshots));
-    expect(result.suggested).toBe("codex");
-  });
-
-  it("excludes providers with 0% effectiveRemaining even if not flagged exhausted", () => {
-    // Claude has 0% session remaining — should be excluded.
-    const snapshots = makeSnapshots({
+    // Claude has 0% session remaining — should be excluded even without exhausted flag.
+    const zeroClaude = makeSnapshots({
       claude: makeClaudeSnapshot({ sessionPercentLeft: 0, weeklyPercentLeft: 90 }),
       codex: makeCodexSnapshot(),
       gemini: makeGeminiSnapshot(),
     });
-
-    const result = assertSuggestion(routeTask("plan", snapshots));
-    expect(result.suggested).toBe("codex");
+    expect(assertSuggestion(routeTask("plan", zeroClaude)).suggested).toBe("codex");
   });
 
   it("returns null when all providers are exhausted", () => {
@@ -364,7 +318,6 @@ describe("routeTask — exhausted providers", () => {
       codex: makeCodexSnapshot({ exhausted: true }),
       gemini: makeGeminiSnapshot({ exhausted: true }),
     });
-
     expect(routeTask("plan", snapshots)).toBeNull();
   });
 
@@ -374,7 +327,6 @@ describe("routeTask — exhausted providers", () => {
       codex: makeCodexSnapshot(),
       gemini: makeGeminiSnapshot(),
     });
-
     const result = assertSuggestion(routeTask("plan", snapshots));
     const claudeScore = result.scores.find((s: ProviderScore) => s.provider === "claude");
     expect(claudeScore?.eligible).toBe(false);
@@ -394,7 +346,6 @@ describe("routeTask — stale snapshots", () => {
       codex: makeCodexSnapshot(),
       gemini: makeGeminiSnapshot(),
     });
-
     const result = assertSuggestion(routeTask("plan", snapshots));
     expect(result.suggested).not.toBe("claude");
     expect(result.suggested).toBe("codex");
@@ -407,35 +358,31 @@ describe("routeTask — stale snapshots", () => {
       codex: makeCodexSnapshot({ exhausted: true }),
       gemini: makeGeminiSnapshot({ exhausted: true }),
     });
-
     // Claude is stale but within window — should still be eligible.
-    const result = assertSuggestion(routeTask("plan", snapshots));
-    expect(result.suggested).toBe("claude");
+    expect(assertSuggestion(routeTask("plan", snapshots)).suggested).toBe("claude");
   });
 
-  it("returns null when all providers are stale-expired", () => {
-    const staleTime = new Date(Date.now() - 45 * 60 * 1_000).toISOString(); // 45 minutes ago
-    const snapshots = makeSnapshots({
-      claude: makeClaudeSnapshot({ stale: true, staleSince: staleTime }),
-      codex: makeCodexSnapshot({ stale: true, staleSince: staleTime }),
-      gemini: makeGeminiSnapshot({ stale: true, staleSince: staleTime }),
+  it("returns null when all providers are stale-expired, and respects a custom staleExpirationMs threshold", () => {
+    const staleTime45 = new Date(Date.now() - 45 * 60 * 1_000).toISOString(); // 45 minutes ago
+    const allStale = makeSnapshots({
+      claude: makeClaudeSnapshot({ stale: true, staleSince: staleTime45 }),
+      codex: makeCodexSnapshot({ stale: true, staleSince: staleTime45 }),
+      gemini: makeGeminiSnapshot({ stale: true, staleSince: staleTime45 }),
     });
+    expect(routeTask("plan", allStale)).toBeNull();
 
-    expect(routeTask("plan", snapshots)).toBeNull();
-  });
-
-  it("respects a custom staleExpirationMs threshold", () => {
     // Stale for 20 minutes — expired under 15-min custom threshold, OK under 30-min default.
-    const staleTime = new Date(Date.now() - 20 * 60 * 1_000).toISOString();
-    const snapshots = makeSnapshots({
-      claude: makeClaudeSnapshot({ stale: true, staleSince: staleTime }),
+    const staleTime20 = new Date(Date.now() - 20 * 60 * 1_000).toISOString();
+    const customThresholdSnapshots = makeSnapshots({
+      claude: makeClaudeSnapshot({ stale: true, staleSince: staleTime20 }),
       codex: makeCodexSnapshot({ exhausted: true }),
       gemini: makeGeminiSnapshot({ exhausted: true }),
     });
-
     const tightThresholdMs = 15 * 60 * 1_000; // 15 minutes
     // Claude is expired under 15-min threshold; all others exhausted → null.
-    expect(routeTask("plan", snapshots, DEFAULT_AFFINITY_RANKINGS, tightThresholdMs)).toBeNull();
+    expect(
+      routeTask("plan", customThresholdSnapshots, DEFAULT_AFFINITY_RANKINGS, tightThresholdMs),
+    ).toBeNull();
   });
 });
 
@@ -455,9 +402,7 @@ describe("routeTask — capacity weighting", () => {
       codex: makeCodexSnapshot({ fiveHourPercentLeft: 5, weeklyPercentLeft: 5 }),
       gemini: makeGeminiSnapshot({ exhausted: true }),
     });
-
-    const result = assertSuggestion(routeTask("implement", snapshots));
-    expect(result.suggested).toBe("claude");
+    expect(assertSuggestion(routeTask("implement", snapshots)).suggested).toBe("claude");
   });
 
   it("prefers the higher-affinity provider when both have ample capacity", () => {
@@ -470,9 +415,7 @@ describe("routeTask — capacity weighting", () => {
       codex: makeCodexSnapshot({ fiveHourPercentLeft: 80, weeklyPercentLeft: 80 }),
       gemini: makeGeminiSnapshot({ exhausted: true }),
     });
-
-    const result = assertSuggestion(routeTask("implement", snapshots));
-    expect(result.suggested).toBe("codex");
+    expect(assertSuggestion(routeTask("implement", snapshots)).suggested).toBe("codex");
   });
 });
 
@@ -487,15 +430,12 @@ describe("routeTask — custom affinity rankings", () => {
       ...DEFAULT_AFFINITY_RANKINGS,
       plan: ["gemini", "claude", "codex"],
     };
-
     const snapshots = makeSnapshots({
       claude: makeClaudeSnapshot({ sessionPercentLeft: 80, weeklyPercentLeft: 80 }),
       codex: makeCodexSnapshot({ fiveHourPercentLeft: 80, weeklyPercentLeft: 80 }),
       gemini: makeGeminiSnapshot({ flashPercentLeft: 80, proPercentLeft: 80 }),
     });
-
-    const result = assertSuggestion(routeTask("plan", snapshots, customRankings));
-    expect(result.suggested).toBe("gemini");
+    expect(assertSuggestion(routeTask("plan", snapshots, customRankings)).suggested).toBe("gemini");
   });
 });
 
@@ -504,26 +444,21 @@ describe("routeTask — custom affinity rankings", () => {
 // ---------------------------------------------------------------------------
 
 describe("routeTask — missing snapshots", () => {
-  it("returns null when no snapshots are provided", () => {
+  it("returns null when no snapshots are provided, and routes to an available provider when some are missing", () => {
     expect(routeTask("plan", new Map())).toBeNull();
-  });
 
-  it("routes to an available provider when some snapshots are missing", () => {
     // Only codex snapshot provided; for 'plan' affinity is claude(1) > codex(2).
     // claude snapshot is missing, so codex should win.
-    const snapshots = makeSnapshots({
+    const codexOnly = makeSnapshots({
       codex: makeCodexSnapshot({ fiveHourPercentLeft: 75, weeklyPercentLeft: 75 }),
     });
-
-    const result = assertSuggestion(routeTask("plan", snapshots));
-    expect(result.suggested).toBe("codex");
+    expect(assertSuggestion(routeTask("plan", codexOnly)).suggested).toBe("codex");
   });
 
   it("marks providers with missing snapshots as ineligible in scores", () => {
     const snapshots = makeSnapshots({
       codex: makeCodexSnapshot(),
     });
-
     const result = assertSuggestion(routeTask("plan", snapshots));
     const claudeScore = result.scores.find((s: ProviderScore) => s.provider === "claude");
     const geminiScore = result.scores.find((s: ProviderScore) => s.provider === "gemini");

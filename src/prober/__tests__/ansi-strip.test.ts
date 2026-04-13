@@ -26,28 +26,21 @@ function readFixture(provider: string, filename: string): string {
 // ---------------------------------------------------------------------------
 
 describe("stripAnsi: CSI color sequences", () => {
-  it("removes ESC[31m (foreground red)", () => {
+  it("removes various color and formatting sequences", () => {
+    // ESC[31m foreground red
     expect(stripAnsi("\x1b[31mhello\x1b[0m")).toBe("hello");
-  });
-
-  it("removes ESC[0m (reset)", () => {
+    // ESC[0m reset alone
     expect(stripAnsi("\x1b[0m")).toBe("");
-  });
-
-  it("removes multi-parameter sequences (ESC[1;32m)", () => {
+    // multi-parameter ESC[1;32m
     expect(stripAnsi("\x1b[1;32mgreen bold\x1b[0m")).toBe("green bold");
-  });
-
-  it("removes 256-color sequences (ESC[38;5;208m)", () => {
+    // 256-color ESC[38;5;208m
     expect(stripAnsi("\x1b[38;5;208morange\x1b[0m")).toBe("orange");
+    // adjacent sequences with no text between
+    expect(stripAnsi("\x1b[1m\x1b[31m\x1b[0m")).toBe("");
   });
 
   it("preserves text between sequences", () => {
     expect(stripAnsi("before\x1b[31mred\x1b[0mafter")).toBe("beforeredafter");
-  });
-
-  it("handles adjacent sequences with no text between", () => {
-    expect(stripAnsi("\x1b[1m\x1b[31m\x1b[0m")).toBe("");
   });
 });
 
@@ -58,54 +51,32 @@ describe("stripAnsi: OSC sequences", () => {
   // branch in the regex is effectively shadowed by the Fe branch for ].
   // BEL (\x07) is then removed by CTRL_RE; ESC\ ST is stripped on a second
   // pass as another Fe sequence.
-  it("strips ESC+] introducer; BEL terminator removed by CTRL_RE", () => {
+  it("handles all OSC patterns", () => {
     // ESC] stripped by ANSI_RE branch 1; BEL stripped by CTRL_RE
     expect(stripAnsi("\x1b]0;My Terminal Title\x07text")).toBe("0;My Terminal Titletext");
-  });
-
-  it("strips ESC+] introducer and ESC+\\ ST terminator separately", () => {
     // ESC] stripped by branch 1; ESC\ also stripped by branch 1
     expect(stripAnsi("\x1b]0;My Terminal Title\x1b\\text")).toBe("0;My Terminal Titletext");
-  });
-
-  it("handles OSC introducer mid-string", () => {
-    // ESC] stripped by branch 1; remaining payload + BEL stripped by CTRL_RE
+    // ESC] stripped by branch 1 mid-string; remaining payload + BEL stripped by CTRL_RE
     expect(stripAnsi("start\x1b]0;title\x07end")).toBe("start0;titleend");
   });
 });
 
 describe("stripAnsi: control characters", () => {
-  it("removes NUL (\\x00)", () => {
+  it("removes control chars across all ranges (\\x00–\\x08, \\x0b–\\x1f, \\x7f)", () => {
     expect(stripAnsi("a\x00b")).toBe("ab");
-  });
-
-  it("removes BS (\\x08)", () => {
     expect(stripAnsi("a\x08b")).toBe("ab");
-  });
-
-  it("removes VT (\\x0b)", () => {
     expect(stripAnsi("a\x0bb")).toBe("ab");
-  });
-
-  it("removes the full range \\x00–\\x08", () => {
-    const controls = Array.from({ length: 9 }, (_, i) => String.fromCharCode(i)).join("");
-    expect(stripAnsi(`a${controls}b`)).toBe("ab");
-  });
-
-  it("removes the range \\x0b–\\x1f", () => {
-    const controls = Array.from({ length: 21 }, (_, i) => String.fromCharCode(0x0b + i)).join("");
-    expect(stripAnsi(`a${controls}b`)).toBe("ab");
-  });
-
-  it("removes DEL (\\x7f)", () => {
     expect(stripAnsi("a\x7fb")).toBe("ab");
+    const lowControls = Array.from({ length: 9 }, (_, i) => String.fromCharCode(i)).join("");
+    expect(stripAnsi(`a${lowControls}b`)).toBe("ab");
+    const midControls = Array.from({ length: 21 }, (_, i) => String.fromCharCode(0x0b + i)).join(
+      "",
+    );
+    expect(stripAnsi(`a${midControls}b`)).toBe("ab");
   });
 
-  it("preserves tab (\\x09)", () => {
+  it("preserves tab (\\x09) and newline (\\x0a)", () => {
     expect(stripAnsi("a\tb")).toBe("a\tb");
-  });
-
-  it("preserves newline (\\x0a)", () => {
     expect(stripAnsi("a\nb")).toBe("a\nb");
   });
 });
@@ -115,35 +86,25 @@ describe("stripAnsi: \\r normalization", () => {
   // by CTRL_RE before the \r→\n replacement runs. This matches the Python
   // behavior: CTRL_RE strips \r, then .replace("\r", "\n") is a no-op.
   // The net effect is that \r is stripped (not converted to \n).
-  it("removes bare \\r (stripped by CTRL_RE before \\r→\\n replacement)", () => {
+  it("handles all \\r cases: bare \\r, \\r\\n sequences, and multiple \\r", () => {
+    // bare \r — stripped by CTRL_RE before \r→\n replacement
     expect(stripAnsi("a\rb")).toBe("ab");
-  });
-
-  it("removes \\r from \\r\\n sequences, leaving \\n intact", () => {
     // \r stripped by CTRL_RE; \n preserved
     expect(stripAnsi("a\r\nb")).toBe("a\nb");
-  });
-
-  it("removes multiple \\r characters", () => {
+    // multiple \r stripped
     expect(stripAnsi("a\r\r\rb")).toBe("ab");
   });
 });
 
 describe("stripAnsi: edge cases", () => {
-  it("returns empty string for empty input", () => {
+  it("handles empty string and plain text unchanged", () => {
     expect(stripAnsi("")).toBe("");
-  });
-
-  it("returns plain text unchanged", () => {
     expect(stripAnsi("hello world")).toBe("hello world");
   });
 
-  it("is idempotent on already-clean text", () => {
+  it("is idempotent on already-clean text and when called twice on dirty text", () => {
     const clean = "hello\nworld\n";
     expect(stripAnsi(clean)).toBe(clean);
-  });
-
-  it("is idempotent when called twice", () => {
     const dirty = "\x1b[31mred\x1b[0m\nplain";
     expect(stripAnsi(stripAnsi(dirty))).toBe(stripAnsi(dirty));
   });
@@ -154,44 +115,26 @@ describe("stripAnsi: edge cases", () => {
 // ---------------------------------------------------------------------------
 
 describe("compactWhitespace: blank line collapsing", () => {
-  it("collapses two consecutive blank lines into one", () => {
-    const input = "a\n\n\nb";
-    expect(compactWhitespace(input)).toBe("a\n\nb");
-  });
-
-  it("collapses many consecutive blank lines into one", () => {
-    const input = "a\n\n\n\n\n\nb";
-    expect(compactWhitespace(input)).toBe("a\n\nb");
-  });
-
-  it("does not remove a single blank line between content", () => {
+  it("collapses consecutive blank lines into one and treats space-only lines as blank", () => {
+    expect(compactWhitespace("a\n\n\nb")).toBe("a\n\nb");
+    expect(compactWhitespace("a\n\n\n\n\n\nb")).toBe("a\n\nb");
+    // single blank line between content — must not be removed
     expect(compactWhitespace("a\n\nb")).toBe("a\n\nb");
-  });
-
-  it("trims trailing whitespace from each line", () => {
-    expect(compactWhitespace("hello   \nworld  ")).toBe("hello\nworld");
-  });
-
-  it("strips leading and trailing blank lines", () => {
-    expect(compactWhitespace("\n\nhello\n\n")).toBe("hello");
-  });
-
-  it("handles lines with only spaces as blank", () => {
+    // lines with only spaces treated as blank
     expect(compactWhitespace("a\n   \n   \nb")).toBe("a\n\nb");
+  });
+
+  it("trims trailing whitespace per line, leading/trailing blank lines, and single lines", () => {
+    expect(compactWhitespace("hello   \nworld  ")).toBe("hello\nworld");
+    expect(compactWhitespace("\n\nhello\n\n")).toBe("hello");
+    expect(compactWhitespace("  hello  ")).toBe("hello");
   });
 });
 
 describe("compactWhitespace: edge cases", () => {
-  it("returns empty string for empty input", () => {
+  it("returns empty string for empty and whitespace-only input", () => {
     expect(compactWhitespace("")).toBe("");
-  });
-
-  it("returns empty string for whitespace-only input", () => {
     expect(compactWhitespace("   \n\n   ")).toBe("");
-  });
-
-  it("returns single line unchanged (after trim)", () => {
-    expect(compactWhitespace("  hello  ")).toBe("hello");
   });
 
   it("is idempotent", () => {
@@ -206,28 +149,17 @@ describe("compactWhitespace: edge cases", () => {
 // ---------------------------------------------------------------------------
 
 describe("stripBlockChars", () => {
-  it("removes full block (█)", () => {
+  it("removes block characters while preserving surrounding text", () => {
     expect(stripBlockChars("██████")).toBe("");
-  });
-
-  it("removes mixed block characters", () => {
     expect(stripBlockChars("█▉▊▋▌▍▎▏▓▒░")).toBe("");
-  });
-
-  it("preserves surrounding text", () => {
     expect(stripBlockChars("48%░░█████used")).toBe("48%used");
   });
 
-  it("returns empty string for empty input", () => {
+  it("handles edge cases: empty string, box-drawing preservation, and idempotency", () => {
     expect(stripBlockChars("")).toBe("");
-  });
-
-  it("leaves box-drawing characters (╭╮╰╯│─) intact", () => {
+    // box-drawing characters (╭╮╰╯│─) must be left intact
     const boxChars = "╭──╮\n│  │\n╰──╯";
     expect(stripBlockChars(boxChars)).toBe(boxChars);
-  });
-
-  it("is idempotent", () => {
     const input = "██ 70% ██";
     expect(stripBlockChars(stripBlockChars(input))).toBe(stripBlockChars(input));
   });
@@ -238,16 +170,10 @@ describe("stripBlockChars", () => {
 // ---------------------------------------------------------------------------
 
 describe("normalizeProbeOutput: pipeline", () => {
-  it("strips ANSI then compacts whitespace", () => {
+  it("strips ANSI then compacts whitespace, and handles empty/ANSI-only input", () => {
     const raw = "\x1b[31mhello\x1b[0m\n\n\nworld";
     expect(normalizeProbeOutput(raw)).toBe("hello\n\nworld");
-  });
-
-  it("returns empty string for empty input", () => {
     expect(normalizeProbeOutput("")).toBe("");
-  });
-
-  it("returns empty string for ANSI-only input", () => {
     expect(normalizeProbeOutput("\x1b[0m\x1b[1m")).toBe("");
   });
 
@@ -270,37 +196,21 @@ describe("golden fixture: fixtures/claude/usage-probe-live-style.txt", () => {
   // This fixture contains block characters (████) from the progress bar.
   const raw = readFixture("claude", "usage-probe-live-style.txt");
 
-  it("fixture is non-empty", () => {
+  it("fixture properties and block char handling", () => {
     expect(raw.length).toBeGreaterThan(0);
-  });
-
-  it("fixture contains block characters before stripping", () => {
+    // fixture contains block chars before stripping
     expect(raw).toMatch(/[█▉▊▋▌▍▎▏▓▒░]/);
+    // stripAnsi leaves block chars intact (they are not ANSI)
+    expect(stripAnsi(raw)).toMatch(/[█▉▊▋▌▍▎▏▓▒░]/);
+    // stripBlockChars removes all block characters
+    expect(stripBlockChars(raw)).not.toMatch(/[█▉▊▋▌▍▎▏▓▒░]/);
   });
 
-  it("stripAnsi leaves block chars intact (they are not ANSI)", () => {
-    const stripped = stripAnsi(raw);
-    expect(stripped).toMatch(/[█▉▊▋▌▍▎▏▓▒░]/);
-  });
-
-  it("stripBlockChars removes all block characters", () => {
-    const noBlocks = stripBlockChars(raw);
-    expect(noBlocks).not.toMatch(/[█▉▊▋▌▍▎▏▓▒░]/);
-  });
-
-  it("normalizeProbeOutput produces parseable text with percent values", () => {
+  it("normalizeProbeOutput produces clean output", () => {
     const normalized = normalizeProbeOutput(raw);
-    // Should still contain usage percentages after normalization
+    // should still contain usage percentages after normalization
     expect(normalized).toMatch(/\d+%/);
-  });
-
-  it("normalizeProbeOutput has no leading or trailing whitespace", () => {
-    const normalized = normalizeProbeOutput(raw);
     expect(normalized).toBe(normalized.trim());
-  });
-
-  it("normalizeProbeOutput contains no consecutive blank lines", () => {
-    const normalized = normalizeProbeOutput(raw);
     expect(normalized).not.toMatch(/\n\n\n/);
   });
 });
@@ -309,31 +219,17 @@ describe("golden fixture: fixtures/codex/status-probe-live-style.txt", () => {
   // This fixture contains box-drawing chars (│─) and progress bar blocks (███).
   const raw = readFixture("codex", "status-probe-live-style.txt");
 
-  it("fixture is non-empty", () => {
+  it("fixture properties and box-drawing character preservation", () => {
     expect(raw.length).toBeGreaterThan(0);
-  });
-
-  it("fixture contains box-drawing characters (│)", () => {
     expect(raw).toContain("│");
+    // stripAnsi does not remove box-drawing characters
+    expect(stripAnsi(raw)).toContain("│");
   });
 
-  it("stripAnsi does not remove box-drawing characters", () => {
-    const stripped = stripAnsi(raw);
-    expect(stripped).toContain("│");
-  });
-
-  it("normalizeProbeOutput preserves box-drawing characters", () => {
+  it("normalizeProbeOutput output is clean and preserves box-drawing chars", () => {
     const normalized = normalizeProbeOutput(raw);
     expect(normalized).toContain("│");
-  });
-
-  it("normalizeProbeOutput has no consecutive blank lines", () => {
-    const normalized = normalizeProbeOutput(raw);
     expect(normalized).not.toMatch(/\n\n\n/);
-  });
-
-  it("normalizeProbeOutput retains percent values", () => {
-    const normalized = normalizeProbeOutput(raw);
     expect(normalized).toMatch(/\d+%/);
   });
 });
@@ -342,32 +238,18 @@ describe("golden fixture: fixtures/gemini/stats-probe-clean.txt", () => {
   // This fixture uses box-drawing characters (╭╮╰╯│─) for its table borders.
   const raw = readFixture("gemini", "stats-probe-clean.txt");
 
-  it("fixture is non-empty", () => {
+  it("fixture properties and box-drawing character handling", () => {
     expect(raw.length).toBeGreaterThan(0);
-  });
-
-  it("fixture contains Unicode box-drawing characters", () => {
     // Gemini uses rounded-corner box chars
     expect(raw).toMatch(/[╭╮╰╯│─]/);
+    // stripAnsi preserves Unicode box-drawing characters
+    expect(stripAnsi(raw)).toMatch(/[╭╮╰╯│─]/);
   });
 
-  it("stripAnsi preserves Unicode box-drawing characters", () => {
-    const stripped = stripAnsi(raw);
-    expect(stripped).toMatch(/[╭╮╰╯│─]/);
-  });
-
-  it("normalizeProbeOutput preserves Unicode box-drawing characters", () => {
+  it("normalizeProbeOutput output is clean and preserves box-drawing chars", () => {
     const normalized = normalizeProbeOutput(raw);
     expect(normalized).toMatch(/[╭╮╰╯│─]/);
-  });
-
-  it("normalizeProbeOutput has no leading or trailing whitespace", () => {
-    const normalized = normalizeProbeOutput(raw);
     expect(normalized).toBe(normalized.trim());
-  });
-
-  it("normalizeProbeOutput has no consecutive blank lines", () => {
-    const normalized = normalizeProbeOutput(raw);
     expect(normalized).not.toMatch(/\n\n\n/);
   });
 });

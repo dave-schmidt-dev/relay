@@ -30,33 +30,15 @@ describe("parseCodexStatus: clean fixture (status-probe-clean.txt)", () => {
   const raw = readFixture("codex", "status-probe-clean.txt");
   const snapshot: CodexUsageSnapshot = parseCodexStatus(raw);
 
-  it("does not throw", () => {
+  it("parses all fields correctly", () => {
     expect(() => parseCodexStatus(raw)).not.toThrow();
-  });
-
-  it("credits is 12.5", () => {
     expect(snapshot.credits).toBe(12.5);
-  });
-
-  it("fiveHourPercentLeft is 68", () => {
     expect(snapshot.fiveHourPercentLeft).toBe(68);
-  });
-
-  it("weeklyPercentLeft is 91", () => {
     expect(snapshot.weeklyPercentLeft).toBe(91);
-  });
-
-  it("fiveHourReset is extracted", () => {
     // Fixture line: "5h limit: 68% left  Resets in 2h 14m"
     expect(snapshot.fiveHourReset).toBe("in 2h 14m");
-  });
-
-  it("weeklyReset is extracted", () => {
     // Fixture line: "Weekly limit: 91% left  Resets on Mar 18, 9:00AM"
     expect(snapshot.weeklyReset).toBe("on Mar 18, 9:00AM");
-  });
-
-  it("rawText is the original input", () => {
     expect(snapshot.rawText).toBe(raw);
   });
 });
@@ -70,33 +52,15 @@ describe("parseCodexStatus: live-style fixture (status-probe-live-style.txt)", (
   const raw = readFixture("codex", "status-probe-live-style.txt");
   const snapshot: CodexUsageSnapshot = parseCodexStatus(raw);
 
-  it("does not throw", () => {
+  it("parses all fields correctly", () => {
     expect(() => parseCodexStatus(raw)).not.toThrow();
-  });
-
-  it("credits is null (not present in fixture)", () => {
     expect(snapshot.credits).toBeNull();
-  });
-
-  it("fiveHourPercentLeft is 96", () => {
     expect(snapshot.fiveHourPercentLeft).toBe(96);
-  });
-
-  it("weeklyPercentLeft is 92", () => {
     expect(snapshot.weeklyPercentLeft).toBe(92);
-  });
-
-  it("fiveHourReset is extracted from parenthesized form", () => {
     // Fixture line: "(resets 00:15 on 14 Mar)"
     expect(snapshot.fiveHourReset).toBe("00:15 on 14 Mar");
-  });
-
-  it("weeklyReset is extracted from parenthesized form", () => {
     // Fixture line: "(resets 03:09 on 17 Mar)"
     expect(snapshot.weeklyReset).toBe("03:09 on 17 Mar");
-  });
-
-  it("rawText is the original input", () => {
     expect(snapshot.rawText).toBe(raw);
   });
 });
@@ -106,12 +70,9 @@ describe("parseCodexStatus: live-style fixture (status-probe-live-style.txt)", (
 // ---------------------------------------------------------------------------
 
 describe("parseCodexStatus: unavailable error (status-error-unavailable.txt)", () => {
-  it("throws on 'data not available yet' fixture", () => {
+  it("throws on fixture and inline string", () => {
     const raw = readFixture("codex", "status-error-unavailable.txt");
     expect(() => parseCodexStatus(raw)).toThrow(/Codex status unavailable/i);
-  });
-
-  it("throws on inline 'data not available yet' string", () => {
     expect(() => parseCodexStatus("Data not available yet. Please try again later.")).toThrow(
       /Codex status unavailable/i,
     );
@@ -123,57 +84,39 @@ describe("parseCodexStatus: unavailable error (status-error-unavailable.txt)", (
 // ---------------------------------------------------------------------------
 
 describe("parseCodexStatus: edge cases", () => {
-  it("throws on empty input", () => {
+  it("throws on empty and whitespace-only input", () => {
     expect(() => parseCodexStatus("")).toThrow(/empty/i);
-  });
-
-  it("throws on whitespace-only input", () => {
     expect(() => parseCodexStatus("   \n\n   ")).toThrow(/empty/i);
   });
 
-  it("returns null fields for a minimal valid line with no usage data", () => {
+  it("returns null fields and preserves rawText for minimal input", () => {
     const snapshot = parseCodexStatus("Codex CLI status");
     expect(snapshot.credits).toBeNull();
     expect(snapshot.fiveHourPercentLeft).toBeNull();
     expect(snapshot.weeklyPercentLeft).toBeNull();
     expect(snapshot.fiveHourReset).toBeNull();
     expect(snapshot.weeklyReset).toBeNull();
+    const text = "Some unrecognized codex output line";
+    expect(parseCodexStatus(text).rawText).toBe(text);
   });
 
-  it("parses credits as a float", () => {
-    const snapshot = parseCodexStatus("Credits: 0.75\n5h limit: 50% left");
-    expect(snapshot.credits).toBe(0.75);
-  });
-
-  it("parses credits when value is a whole number", () => {
-    const snapshot = parseCodexStatus("Credits: 5\n5h limit: 50% left");
-    expect(snapshot.credits).toBe(5);
-  });
-
-  it("attributes reset on a continuation line to the right section (5h)", () => {
+  it("parses credits, attributes resets correctly, and handles update-available detection", () => {
+    // Credits as float and whole number
+    expect(parseCodexStatus("Credits: 0.75\n5h limit: 50% left").credits).toBe(0.75);
+    expect(parseCodexStatus("Credits: 5\n5h limit: 50% left").credits).toBe(5);
+    // Reset attribution to the correct section via parenthesized form
     const text =
       "5h limit: 80% left\n(resets 01:00 on 15 Apr)\nWeekly limit: 60% left\n(resets 05:00 on 18 Apr)";
-    const snapshot = parseCodexStatus(text);
-    expect(snapshot.fiveHourReset).toBe("01:00 on 15 Apr");
-    expect(snapshot.weeklyReset).toBe("05:00 on 18 Apr");
-  });
-
-  it("throws when 'update available' and 'codex' both appear", () => {
+    const snap = parseCodexStatus(text);
+    expect(snap.fiveHourReset).toBe("01:00 on 15 Apr");
+    expect(snap.weeklyReset).toBe("05:00 on 18 Apr");
+    // Update-available throws only when 'codex' also appears
     expect(() => parseCodexStatus("Update available for codex CLI")).toThrow(
       /Codex CLI update required/i,
     );
-  });
-
-  it("does not throw when 'update available' appears without 'codex'", () => {
-    // Should not trigger the update-required error — unrelated output.
+    // Does not throw when 'update available' appears without 'codex'
     expect(() =>
       parseCodexStatus("Update available for some other tool\n5h limit: 50% left"),
     ).not.toThrow();
-  });
-
-  it("preserves rawText even when fields are missing", () => {
-    const text = "Some unrecognized codex output line";
-    const snapshot = parseCodexStatus(text);
-    expect(snapshot.rawText).toBe(text);
   });
 });
