@@ -43,6 +43,7 @@ Relay is a browser-based workspace that tracks your AI subscription usage in rea
 - **Provider adapters**: Claude, Codex, Gemini — command templates, output parsers, exit code maps, rate-limit detection, handoff prompt generation
 - **Usage probing**: ANSI stripping, persistent PTY sessions via node-pty, per-provider parsers (Claude `/usage`, Codex `/status`, Gemini `/stats`), probe orchestrator with caching and stale detection
 - **Routing**: Task classifier (keyword/pattern heuristics), usage-aware provider router with affinity rankings and capacity weighting
+- **Context Assembly & Handoffs**: File snapshotting, context pre-population, AGENTS.md memory health checks, handoff persistence, and provider-specific prompt formatting
 - **Safety**: Secret redaction (API key patterns, blocked file attachments), cancellation (SIGTERM → SIGKILL), orphan detection on startup
 
 ### Test Coverage

@@ -170,9 +170,10 @@ describe("geminiAdapter.buildHandoffPrompt", () => {
         { title: "Constraints", body: "No breaking changes." },
       ],
     });
-    expect(withContext).toContain("## Prior Work");
+    expect(withContext).toContain("## Context");
+    expect(withContext).toContain("### Prior Work");
     expect(withContext).toContain("Some prior work description.");
-    expect(withContext).toContain("## Constraints");
+    expect(withContext).toContain("### Constraints");
     expect(withContext).toContain("No breaking changes.");
 
     // empty context still produces a non-empty string
@@ -194,9 +195,9 @@ describe("geminiAdapter.buildHandoffPrompt", () => {
         { title: "Third", body: "Third body." },
       ],
     });
-    const firstPos = ordered.indexOf("## First");
-    const secondPos = ordered.indexOf("## Second");
-    const thirdPos = ordered.indexOf("## Third");
+    const firstPos = ordered.indexOf("### First");
+    const secondPos = ordered.indexOf("### Second");
+    const thirdPos = ordered.indexOf("### Third");
     expect(firstPos).toBeLessThan(secondPos);
     expect(secondPos).toBeLessThan(thirdPos);
 

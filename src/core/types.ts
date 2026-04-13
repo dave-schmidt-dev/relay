@@ -106,3 +106,42 @@ export interface OperatorAction {
   /** Arbitrary structured detail for the action. */
   detail: Record<string, unknown>;
 }
+
+export type ContextItem =
+  | { type: "memory"; content: { hash: string; content_ref: string } }
+  | {
+      type: "excerpt";
+      content: {
+        source_run_id: string;
+        source_file: string;
+        byte_start: number;
+        byte_end: number;
+        sha256: string;
+        text: string;
+      };
+    }
+  | { type: "file"; content: { original_path: string; snapshot_path: string; sha256: string } }
+  | { type: "note"; content: { text: string } };
+
+export interface Handoff {
+  /** UUID identifying this handoff. */
+  handoff_id: string;
+  /** UUID of the run that generated this handoff. */
+  source_run_id: string;
+  /** AI provider intended to execute this handoff. */
+  target_provider: Provider;
+  /** Title for the handoff task. */
+  title: string;
+  /** High-level objective of the handoff. */
+  objective: string;
+  /** Specific outcome requested from the target provider. */
+  requested_outcome: string;
+  /** Pieces of context attached to the handoff. */
+  context_items: ContextItem[];
+  /** Template used to construct the final prompt. */
+  template_prompt: string;
+  /** Final prompt text compiled for the target provider. */
+  final_prompt: string;
+  /** ISO 8601 timestamp when the handoff was created. */
+  created_at: string;
+}

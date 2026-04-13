@@ -149,17 +149,21 @@ export const claudeAdapter: ProviderAdapter = {
 
     const lines: string[] = [];
 
+    lines.push(`<objective>`);
     lines.push(`# ${title}`);
     lines.push("");
-    lines.push("## Objective");
-    lines.push("");
     lines.push(objective);
+    lines.push(`</objective>`);
 
-    for (const item of contextItems) {
+    if (contextItems.length > 0) {
       lines.push("");
-      lines.push(`## ${item.title}`);
-      lines.push("");
-      lines.push(item.body);
+      lines.push(`<context>`);
+      for (const item of contextItems) {
+        lines.push(`<context_item title="${item.title}">`);
+        lines.push(item.body);
+        lines.push(`</context_item>`);
+      }
+      lines.push(`</context>`);
     }
 
     return lines.join("\n");

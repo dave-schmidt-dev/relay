@@ -159,7 +159,7 @@ describe("codexAdapter.detectRateLimit", () => {
 // ---------------------------------------------------------------------------
 
 describe("codexAdapter.buildHandoffPrompt", () => {
-  it("produces correct markdown: h1 title, h2 objective, context items included, empty context works, ordering preserved, starts with h1", () => {
+  it("produces correct markdown: h1 title, h2 objective, context items included in code blocks, empty context works, ordering preserved, starts with h1", () => {
     // h1 title + h2 objective
     const basic = codexAdapter.buildHandoffPrompt({
       title: "Implement the widget",
@@ -179,10 +179,11 @@ describe("codexAdapter.buildHandoffPrompt", () => {
         { title: "Constraints", body: "No breaking changes." },
       ],
     });
-    expect(withContext).toContain("## Prior Work");
-    expect(withContext).toContain("Some prior work description.");
-    expect(withContext).toContain("## Constraints");
-    expect(withContext).toContain("No breaking changes.");
+    expect(withContext).toContain("## Context");
+    expect(withContext).toContain("### Prior Work");
+    expect(withContext).toContain("```\nSome prior work description.\n```");
+    expect(withContext).toContain("### Constraints");
+    expect(withContext).toContain("```\nNo breaking changes.\n```");
 
     // empty context still produces a non-empty string
     const minimal = codexAdapter.buildHandoffPrompt({
@@ -203,9 +204,9 @@ describe("codexAdapter.buildHandoffPrompt", () => {
         { title: "Third", body: "Third body." },
       ],
     });
-    const firstPos = ordered.indexOf("## First");
-    const secondPos = ordered.indexOf("## Second");
-    const thirdPos = ordered.indexOf("## Third");
+    const firstPos = ordered.indexOf("### First");
+    const secondPos = ordered.indexOf("### Second");
+    const thirdPos = ordered.indexOf("### Third");
     expect(firstPos).toBeLessThan(secondPos);
     expect(secondPos).toBeLessThan(thirdPos);
 

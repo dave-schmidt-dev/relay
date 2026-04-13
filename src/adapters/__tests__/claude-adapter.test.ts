@@ -146,16 +146,17 @@ describe("claudeAdapter.detectRateLimit", () => {
 // ---------------------------------------------------------------------------
 
 describe("claudeAdapter.buildHandoffPrompt", () => {
-  it("produces correct markdown: h1 title, h2 objective, context items included, empty context works, ordering preserved", () => {
-    // h1 title + h2 objective
+  it("produces correct format: objective block, context items included, empty context works, ordering preserved", () => {
+    // objective block
     const basic = claudeAdapter.buildHandoffPrompt({
       title: "Implement the widget",
       objective: "Build a robust widget module.",
       contextItems: [],
     });
+    expect(basic).toContain("<objective>");
     expect(basic).toContain("# Implement the widget");
-    expect(basic).toContain("## Objective");
     expect(basic).toContain("Build a robust widget module.");
+    expect(basic).toContain("</objective>");
 
     // context items included
     const withContext = claudeAdapter.buildHandoffPrompt({
@@ -166,9 +167,10 @@ describe("claudeAdapter.buildHandoffPrompt", () => {
         { title: "Constraints", body: "No breaking changes." },
       ],
     });
-    expect(withContext).toContain("## Prior Work");
+    expect(withContext).toContain("<context>");
+    expect(withContext).toContain('<context_item title="Prior Work">');
     expect(withContext).toContain("Some prior work description.");
-    expect(withContext).toContain("## Constraints");
+    expect(withContext).toContain('<context_item title="Constraints">');
     expect(withContext).toContain("No breaking changes.");
 
     // empty context still produces a non-empty string
@@ -190,9 +192,9 @@ describe("claudeAdapter.buildHandoffPrompt", () => {
         { title: "Third", body: "Third body." },
       ],
     });
-    const firstPos = ordered.indexOf("## First");
-    const secondPos = ordered.indexOf("## Second");
-    const thirdPos = ordered.indexOf("## Third");
+    const firstPos = ordered.indexOf('title="First"');
+    const secondPos = ordered.indexOf('title="Second"');
+    const thirdPos = ordered.indexOf('title="Third"');
     expect(firstPos).toBeLessThan(secondPos);
     expect(secondPos).toBeLessThan(thirdPos);
   });

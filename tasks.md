@@ -92,35 +92,35 @@ Exit criteria:
 2. Each adapter can generate a target prompt from a handoff packet.
 3. Child runs link to parent runs via handoff.
 
-- [ ] TASK-020: Implement handoff data model and persistence (handoff.json + artifacts/)
+- [x] TASK-020: Implement handoff data model and persistence (handoff.json + artifacts/)
   - spec: REQ-006
   - test: src/core/__tests__/handoff-persistence.test.ts
-  - status: todo
+  - status: done
 
-- [ ] TASK-021: Implement file snapshotting for handoff attachments (copy + SHA256)
+- [x] TASK-021: Implement file snapshotting for handoff attachments (copy + SHA256)
   - spec: REQ-006
   - test: src/core/__tests__/file-snapshot.test.ts
-  - status: todo
+  - status: done
 
-- [ ] TASK-022: Implement context pre-population (AGENTS.md + selected excerpts + project files)
+- [x] TASK-022: Implement context pre-population (AGENTS.md + selected excerpts + project files)
   - spec: REQ-006
   - test: src/core/__tests__/context-assembly.test.ts
-  - status: todo
+  - status: done
 
-- [ ] TASK-023: Implement per-adapter buildHandoffPrompt() for Claude, Codex, and Gemini
+- [x] TASK-023: Implement per-adapter buildHandoffPrompt() for Claude, Codex, and Gemini
   - spec: REQ-006, REQ-013
   - test: src/adapters/__tests__/handoff-prompt-claude.test.ts, codex, gemini
-  - status: todo
+  - status: done
 
-- [ ] TASK-024: Implement parent-child run linking via handoff_id
+- [x] TASK-024: Implement parent-child run linking via handoff_id
   - spec: REQ-006, REQ-009
   - test: src/core/__tests__/run-linking.test.ts
-  - status: todo
+  - status: done
 
-- [ ] TASK-025: Implement AGENTS.md health check (exists, hash, modified detection)
+- [x] TASK-025: Implement AGENTS.md health check (exists, hash, modified detection)
   - spec: REQ-008
   - test: src/core/__tests__/memory-health.test.ts
-  - status: todo
+  - status: done
 
 ## Phase 3: Server And Web UI
 

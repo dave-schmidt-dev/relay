@@ -44,6 +44,6 @@ export default tseslint.config(
 
   // Files to ignore
   {
-    ignores: ["dist/**", "node_modules/**", "coverage/**"],
+    ignores: ["dist/**", "node_modules/**", "coverage/**", "eslint.config.js", "vitest.config.ts"],
   },
 );

@@ -134,11 +134,15 @@ export const geminiAdapter: ProviderAdapter = {
     lines.push("");
     lines.push(objective);
 
-    for (const item of contextItems) {
+    if (contextItems.length > 0) {
       lines.push("");
-      lines.push(`## ${item.title}`);
-      lines.push("");
-      lines.push(item.body);
+      lines.push("## Context");
+      for (const item of contextItems) {
+        lines.push("");
+        lines.push(`### ${item.title}`);
+        lines.push("");
+        lines.push(item.body);
+      }
     }
 
     return lines.join("\n");
