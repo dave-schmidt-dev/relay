@@ -22,6 +22,9 @@ import { cancelProcess } from "../core/cancellation.js";
 import { loadHandoff, saveHandoff } from "../core/handoff-persistence.js";
 import { assembleContext } from "../core/context-assembly.js";
 import { spawnSubprocess, SubprocessHandle } from "../core/subprocess-runner.js";
+import { filterRuns } from "../core/run-filter.js";
+import { exportRunToMarkdown } from "../core/export-markdown.js";
+import { RunQueue } from "../core/concurrency-control.js";
 import { runEventBus } from "./websocket.js";
 import { Provider, TaskRole, Handoff, ContextItem, RunStatus } from "../core/types.js";
 import { claudeAdapter } from "../adapters/claude-adapter.js";
@@ -87,6 +90,7 @@ export function createApp(
   // Track active subprocess handles for cancellation
   const activeRuns = new Map<string, SubprocessHandle>();
   const cancelledRuns = new Set<string>();
+  const runQueue = new RunQueue(config.maxConcurrentRuns || 3);
 
   const recordAction = async (action: ReturnType<typeof createAction>) => {
     const actionsPath = path.join(projectRoot, ".relay", "actions.jsonl");
@@ -248,9 +252,31 @@ export function createApp(
   // Runs
   // ---------------------------------------------------------------------------
 
-  app.get("/api/runs", async (_req: Request, res: Response) => {
+  app.get("/api/runs", async (req: Request, res: Response) => {
     try {
       const runIds = await listRunIds(projectRoot);
+
+      const { provider, role, status } = req.query;
+      if (provider || role || status) {
+        const runs = await Promise.all(
+          runIds.map((id) =>
+            loadRun(projectRoot, id).catch((err: unknown) => {
+              console.error(err);
+              return null;
+            }),
+          ),
+        );
+        const validRuns = runs.filter((r): r is import("../core/types.js").Run => r !== null);
+
+        const filteredRuns = filterRuns(validRuns, {
+          provider: provider as Provider | Provider[],
+          role: role as TaskRole | TaskRole[],
+          status: status as RunStatus | RunStatus[],
+        });
+
+        return res.json(filteredRuns.map((r) => r.run_id));
+      }
+
       res.json(runIds);
     } catch (err: unknown) {
       console.error("Failed to list runs:", err);
@@ -320,70 +346,103 @@ export function createApp(
       await recordAction(createAction("run_launched", run.run_id, { provider, role }));
 
       // 7. Launch (Fire and forget, but handle lifecycle)
-      const handle = spawnSubprocess({
-        command: run.command,
-        cwd: run.cwd,
-        envAllowlist: [...config.envAllowlist, ...adapter.requiredEnvVars],
-        onStdout: (chunk) => {
-          runEventBus.emitStdout(run.run_id, chunk);
-          appendStdout(projectRoot, run.run_id, chunk).catch(console.error);
-        },
-        onStderr: (chunk) => {
-          runEventBus.emitStderr(run.run_id, chunk);
-          appendStderr(projectRoot, run.run_id, chunk).catch(console.error);
-        },
-        onExit: (code, signal) => {
-          activeRuns.delete(run.run_id);
-          const isCanceled = cancelledRuns.has(run.run_id);
-          const finalStatus: RunStatus = isCanceled
-            ? "canceled"
-            : code === 0
-              ? "succeeded"
-              : "failed";
+      res.status(201).json(run);
 
-          const exitReason = signal ? `Killed by ${signal}` : undefined;
+      runQueue
+        .run(async () => {
+          if (cancelledRuns.has(run.run_id)) {
+            const canceledRun = transitionRun(run, "canceled");
+            await updateRunMetadata(projectRoot, canceledRun);
+            return;
+          }
 
-          loadRun(projectRoot, run.run_id)
-            .then(async (currentRun) => {
-              const updatedRun = transitionRun(currentRun, finalStatus, {
-                exit_code: code ?? undefined,
-                exit_reason: exitReason,
-              });
-              await updateRunMetadata(projectRoot, updatedRun);
+          return new Promise<void>((resolve) => {
+            const handle = spawnSubprocess({
+              command: run.command,
+              cwd: run.cwd,
+              envAllowlist: [...config.envAllowlist, ...adapter.requiredEnvVars],
+              onStdout: (chunk) => {
+                runEventBus.emitStdout(run.run_id, chunk);
+                appendStdout(projectRoot, run.run_id, chunk).catch((err: unknown) => {
+                  console.error(err);
+                });
+              },
+              onStderr: (chunk) => {
+                runEventBus.emitStderr(run.run_id, chunk);
+                appendStderr(projectRoot, run.run_id, chunk).catch((err: unknown) => {
+                  console.error(err);
+                });
+              },
+              onExit: (code, signal) => {
+                activeRuns.delete(run.run_id);
+                const isCanceled = cancelledRuns.has(run.run_id);
+                const finalStatus: RunStatus = isCanceled
+                  ? "canceled"
+                  : code === 0
+                    ? "succeeded"
+                    : "failed";
 
-              // Extract final output if successful
-              if (finalStatus === "succeeded") {
-                const stdoutData = await fs.readFile(path.join(runDir, "stdout.log"), "utf-8");
-                const finalOutput = adapter.parseOutput(stdoutData);
-                await writeFinalOutput(projectRoot, run.run_id, finalOutput);
-              }
-              cancelledRuns.delete(run.run_id);
-            })
-            .catch(console.error);
-        },
-        onError: (err) => {
-          activeRuns.delete(run.run_id);
-          cancelledRuns.delete(run.run_id);
-          console.error(`Subprocess error for run ${run.run_id}:`, err);
-          loadRun(projectRoot, run.run_id)
-            .then(async (currentRun) => {
-              const updatedRun = transitionRun(currentRun, "failed", {
-                exit_reason: err.message,
-              });
-              await updateRunMetadata(projectRoot, updatedRun);
-            })
-            .catch(console.error);
-        },
-      });
+                const exitReason = signal ? `Killed by ${signal}` : undefined;
 
-      // Store handle for cancellation
-      activeRuns.set(run.run_id, handle);
+                loadRun(projectRoot, run.run_id)
+                  .then(async (currentRun) => {
+                    const updatedRun = transitionRun(currentRun, finalStatus, {
+                      exit_code: code ?? undefined,
+                      exit_reason: exitReason,
+                    });
+                    await updateRunMetadata(projectRoot, updatedRun);
 
-      // Update run to "running" status
-      const runningRun = transitionRun(run, "running", { pid: handle.pid });
-      await updateRunMetadata(projectRoot, runningRun);
+                    // Extract final output if successful
+                    if (finalStatus === "succeeded") {
+                      const stdoutData = await fs.readFile(
+                        path.join(runDir, "stdout.log"),
+                        "utf-8",
+                      );
+                      const finalOutput = adapter.parseOutput(stdoutData);
+                      await writeFinalOutput(projectRoot, run.run_id, finalOutput);
+                    }
+                    cancelledRuns.delete(run.run_id);
+                  })
+                  .catch((err: unknown) => {
+                    console.error(err);
+                  })
+                  .finally(() => {
+                    resolve();
+                  });
+              },
+              onError: (err: Error) => {
+                activeRuns.delete(run.run_id);
+                cancelledRuns.delete(run.run_id);
+                console.error(`Subprocess error for run ${run.run_id}:`, err);
+                loadRun(projectRoot, run.run_id)
+                  .then(async (currentRun) => {
+                    const updatedRun = transitionRun(currentRun, "failed", {
+                      exit_reason: err.message,
+                    });
+                    await updateRunMetadata(projectRoot, updatedRun);
+                  })
+                  .catch((err: unknown) => {
+                    console.error(err);
+                  })
+                  .finally(() => {
+                    resolve();
+                  });
+              },
+            });
 
-      res.status(201).json(runningRun);
+            // Store handle for cancellation
+            activeRuns.set(run.run_id, handle);
+
+            // Update to running with pid
+            const runningRun = transitionRun(run, "running", { pid: handle.pid });
+            updateRunMetadata(projectRoot, runningRun).catch((err: unknown) => {
+              console.error(err);
+            });
+          });
+        })
+        .catch((err: unknown) => {
+          console.error(err);
+        });
     } catch (err: unknown) {
       console.error("Failed to launch run:", err);
       res.status(500).json({ error: "Failed to launch run" });
@@ -454,7 +513,9 @@ export function createApp(
       if (handle) {
         cancelledRuns.add(runId);
         await recordAction(createAction("run_canceled", runId));
-        await cancelProcess({ handle });
+        await cancelProcess({ handle }).catch((err: unknown) => {
+          console.error(err);
+        });
         // transitionRun will be called by onExit callback of spawnSubprocess
         res.json({ success: true });
       } else {
@@ -466,6 +527,23 @@ export function createApp(
     } catch (err: unknown) {
       console.error("Failed to cancel run:", err);
       res.status(500).json({ error: "Failed to cancel run" });
+    }
+  });
+
+  app.post("/api/runs/:runId/export", async (req: Request, res: Response) => {
+    try {
+      const { runId } = req.params;
+      if (!runId || typeof runId !== "string")
+        return res.status(400).json({ error: "Invalid runId" });
+
+      const reqBody = req.body as { exportId?: string };
+      const exportId = reqBody.exportId ?? crypto.randomUUID();
+      const exportPath = await exportRunToMarkdown(projectRoot, runId, exportId);
+
+      res.json({ exportId, exportPath });
+    } catch (err: unknown) {
+      console.error("Failed to export run:", err);
+      res.status(500).json({ error: "Failed to export run" });
     }
   });
 

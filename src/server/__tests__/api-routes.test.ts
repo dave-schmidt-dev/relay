@@ -24,6 +24,10 @@ vi.mock("../../core/run-persistence.js", () => ({
   writeFinalOutput: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../../core/export-markdown.js", () => ({
+  exportRunToMarkdown: vi.fn().mockResolvedValue("/mock/root/.relay/exports/mock-export.md"),
+}));
+
 vi.mock("../../core/memory-health.js", () => ({
   checkMemoryHealth: vi.fn().mockResolvedValue({ status: "healthy", currentHash: "hash-1" }),
 }));
@@ -110,6 +114,12 @@ describe("REST API Routes", () => {
       expect(Array.isArray(res.body)).toBe(true);
     });
 
+    it("GET /api/runs with filters returns filtered array of IDs", async () => {
+      const res = await request(app).get("/api/runs?provider=claude&status=running");
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+    });
+
     it("POST /api/runs creates a new run", async () => {
       const res = await request(app)
         .post("/api/runs")
@@ -118,7 +128,7 @@ describe("REST API Routes", () => {
       expect(res.status).toBe(201);
       const body = res.body as { run_id: string; status: string };
       expect(body).toHaveProperty("run_id");
-      expect(body.status).toBe("running");
+      expect(body.status).toBe("queued");
     });
 
     it("GET /api/runs/:id returns run details", async () => {
@@ -148,6 +158,15 @@ describe("REST API Routes", () => {
       expect(res.status).toBe(200);
       const body = res.body as { success: boolean };
       expect(body.success).toBe(true);
+    });
+
+    it("POST /api/runs/:id/export exports a run", async () => {
+      const res = await request(app)
+        .post("/api/runs/run-123/export")
+        .send({ exportId: "test-export" });
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty("exportId", "test-export");
+      expect(res.body).toHaveProperty("exportPath");
     });
   });
 

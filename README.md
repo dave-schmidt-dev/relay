@@ -51,24 +51,48 @@ Relay is a browser-based workspace that tracks your AI subscription usage in rea
 
 296 tests across 34 test files. All pass in about 10-11 seconds.
 
-## Prerequisites
+## Installation
 
+Relay requires a macOS Apple Silicon environment due to its native `node-pty` dependency for usage probing.
+
+**Prerequisites:**
 - macOS (Apple Silicon)
 - Node.js 22 LTS
-- Xcode CLI tools (for `node-pty` native compilation)
+- [pnpm](https://pnpm.io/installation) (v10+)
+- Xcode CLI tools (`xcode-select --install`) for `node-pty` native compilation
 - At least one of: `claude`, `codex`, `gemini` CLIs installed and authenticated
 
-## Quick Start
-
+**Setup:**
 ```bash
 git clone https://github.com/dave-schmidt-dev/relay.git
 cd relay
 pnpm install
-pnpm test        # 296 tests
-pnpm lint        # eslint
-pnpm typecheck   # tsc --noEmit
-pnpm build:web   # production SPA build
+
+# Verify the build and tests
+pnpm test        # Run the test suite
+pnpm lint        # Run ESLint
+pnpm typecheck   # Run TypeScript type checking
+pnpm build:web   # Build the production SPA
 ```
+
+## Configuration
+
+Relay's configuration is managed at the project level in `.relay/config.json`, which is initialized when you run Relay in a project directory for the first time.
+
+- **Provider Affinity**: You can configure default provider rankings per task type (`plan`, `implement`, `review`, `research`).
+- **Probe Interval**: The interval at which Relay probes provider CLIs for usage data (default is 120 seconds).
+- **Environment Allowlist**: By default, Relay restricts the environment variables passed to provider subprocesses to protect secrets. You can configure which variables are inherited.
+- **Gemini Probe Method**: Gemini `/stats` PTY is the default usage probe. An internal Node.js module probe is available behind an experimental `probe_method=internal` flag.
+
+## Known Limitations
+
+Relay v1 is tailored for a specific solo-operator workflow:
+
+- **CLI Execution Only**: Relay does not make direct API calls. All execution routes through existing CLI subscriptions (`claude`, `codex`, `gemini`). Other providers (e.g., Cursor, Copilot) are not supported.
+- **Headless Execution**: Provider subprocesses are launched in headless pipe mode. There is no mid-run interaction, so prompts requiring interactive confirmations will fail or timeout. PTY is strictly used for background usage probing.
+- **Single User & Local Storage**: No multi-user collaboration, cloud sync, or hosted deployment. Storage is entirely file-based (project data in `.relay/`, global usage data in `~/.relay/usage/`).
+- **Dynamic Quotas**: Relay does not attempt to deduce token usage between probes. Usage data updates exclusively via the background probing engine.
+- **No Autonomous Git**: Relay does not perform autonomous git operations.
 
 ## Architecture
 

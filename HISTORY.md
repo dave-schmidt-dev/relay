@@ -82,3 +82,20 @@
 - Reworked the dispatch pane so selected excerpts, attached project files, operator notes, and AGENTS.md memory flow through structured handoff context instead of being stuffed into ad hoc prompt text.
 - Expanded REST API coverage and kept WebSocket streaming coverage in place; the suite now passes at 296 tests across 34 files.
 - Updated README/task state to match the actual shipped Phase 3 state rather than the earlier stale placeholders.
+
+## 2026-04-14 — Phase 4 complete
+
+- Search, Export, and Hardening implemented: 5 tasks completed.
+- Implemented metadata-based run filtering by provider, task type, and status in `src/core/run-filter.ts`.
+- Implemented Markdown workflow export with automated secret redaction in `src/core/export-markdown.ts`.
+- Implemented concurrency control in `src/core/concurrency-control.ts` ensuring a maximum of 3 concurrent runs with queueing support.
+- Added comprehensive integration test in `src/__tests__/integration/plan-handoff-implement.test.ts` covering the full Plan → Handoff → Implement workflow.
+- Updated documentation in `README.md` to cover Installation (including `node-pty` native requirements), Configuration, and Known Limitations.
+- Verified all quality gates: `pnpm typecheck`, `pnpm lint`, `pnpm test` (316 tests passing), and `pnpm build:web` all pass.
+- Project is now feature-complete for v1.0.
+
+## 2026-04-13 — Added multi-agent load balancing note
+...
+- Added `AGENT-LOAD-BALANCING.md` to capture the process needed to spread work across multiple providers without lowering quality.
+- Documented the control-plane hierarchy (`~/.agent/AGENTS.md` → `project.md` → `SPEC.md` → `tasks.md` → machine-enforced scripts/hooks).
+- Captured recommended global-agent rules, repo-local files, validation-gate structure, definition-of-done template, and trust levels for low/medium/high-risk work.

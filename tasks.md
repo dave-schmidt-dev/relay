@@ -246,27 +246,27 @@ Phase 4 specific gate:
 - Filtering, export, concurrency, and integration behavior must land with automated tests in the paths listed on the tasks below.
 - Export and hardening work is not complete if it only works in ad hoc manual runs and is not represented in the automated suite.
 
-- [ ] TASK-037: Implement run filtering (by provider, task type, status)
+- [x] TASK-037: Implement run filtering (by provider, task type, status)
   - spec: REQ-015
   - test: src/core/__tests__/run-filter.test.ts
-  - status: todo
+  - status: done
 
-- [ ] TASK-038: Implement Markdown workflow export with redaction
+- [x] TASK-038: Implement Markdown workflow export with redaction
   - spec: REQ-010, REQ-011
   - test: src/core/__tests__/export-markdown.test.ts
-  - status: todo
+  - status: done
 
-- [ ] TASK-039: Add integration test for full plan → handoff → implement flow
+- [x] TASK-039: Add integration test for full plan → handoff → implement flow
   - spec: REQ-004, REQ-006
   - test: src/__tests__/integration/plan-handoff-implement.test.ts
-  - status: todo
+  - status: done
 
-- [ ] TASK-040: Add concurrency limit enforcement (max 3 concurrent runs, queue overflow)
+- [x] TASK-040: Add concurrency limit enforcement (max 3 concurrent runs, queue overflow)
   - spec: REQ-005
   - test: src/core/__tests__/concurrency-control.test.ts
-  - status: todo
+  - status: done
 
-- [ ] TASK-041: Document install, configuration, and known limitations in README
+- [x] TASK-041: Document install, configuration, and known limitations in README
   - spec: Quality And Process Requirements
   - test: verify README sections exist
-  - status: todo
+  - status: done
