@@ -13,6 +13,10 @@ export class RunEventBus extends EventEmitter {
   emitStderr(runId: string, chunk: string) {
     this.emit("stderr", { runId, chunk });
   }
+
+  emitStatusChange(runId: string, status: string) {
+    this.emit("status_change", { runId, status });
+  }
 }
 
 export const runEventBus = new RunEventBus();
@@ -89,11 +93,15 @@ export function initWebSocketServer(server: HttpServer): WebSocketServer {
   });
 
   // Forward events from the bus to subscribed clients
-  const forwardEvent = (type: "stdout" | "stderr", event: { runId: string; chunk: string }) => {
+  const forwardEvent = (
+    type: "stdout" | "stderr" | "status_change",
+    event: { runId: string; chunk?: string; status?: string },
+  ) => {
     const message = JSON.stringify({
       type,
       runId: event.runId,
       chunk: event.chunk,
+      status: event.status,
     });
 
     for (const client of clients.values()) {
@@ -108,6 +116,9 @@ export function initWebSocketServer(server: HttpServer): WebSocketServer {
   });
   runEventBus.on("stderr", (event: { runId: string; chunk: string }) => {
     forwardEvent("stderr", event);
+  });
+  runEventBus.on("status_change", (event: { runId: string; status: string }) => {
+    forwardEvent("status_change", event);
   });
 
   return wss;

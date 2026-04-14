@@ -353,6 +353,7 @@ export function createApp(
           if (cancelledRuns.has(run.run_id)) {
             const canceledRun = transitionRun(run, "canceled");
             await updateRunMetadata(projectRoot, canceledRun);
+            runEventBus.emitStatusChange(run.run_id, "canceled");
             return;
           }
 
@@ -391,6 +392,7 @@ export function createApp(
                       exit_reason: exitReason,
                     });
                     await updateRunMetadata(projectRoot, updatedRun);
+                    runEventBus.emitStatusChange(run.run_id, finalStatus);
 
                     // Extract final output if successful
                     if (finalStatus === "succeeded") {
@@ -420,6 +422,7 @@ export function createApp(
                       exit_reason: err.message,
                     });
                     await updateRunMetadata(projectRoot, updatedRun);
+                    runEventBus.emitStatusChange(run.run_id, "failed");
                   })
                   .catch((err: unknown) => {
                     console.error(err);
@@ -438,6 +441,7 @@ export function createApp(
             updateRunMetadata(projectRoot, runningRun).catch((err: unknown) => {
               console.error(err);
             });
+            runEventBus.emitStatusChange(run.run_id, "running");
           });
         })
         .catch((err: unknown) => {
@@ -521,6 +525,7 @@ export function createApp(
       } else {
         const canceledRun = transitionRun(run, "canceled");
         await updateRunMetadata(projectRoot, canceledRun);
+        runEventBus.emitStatusChange(runId, "canceled");
         await recordAction(createAction("run_canceled", runId));
         res.json({ success: true });
       }

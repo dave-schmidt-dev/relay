@@ -26,14 +26,34 @@ const workspaceModes: {
 ];
 
 export default function App() {
-  const { projectState, runs, usageSnapshots, runLogs, launchRun, subscribeToRun, triggerProbe } =
-    useRelay();
+  const {
+    projectState,
+    runs,
+    usageSnapshots,
+    runLogs,
+    launchRun,
+    subscribeToRun,
+    triggerProbe,
+    fetchRuns,
+    wsStatus,
+  } = useRelay();
 
   const [sourceRunId, setSourceRunId] = useState<string | null>(null);
   const [dispatchedRunId, setDispatchedRunId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("split");
   const [selectedExcerpts, setSelectedExcerpts] = useState<SelectedExcerpt[]>([]);
+  const [filters, setFilters] = useState<{
+    provider?: string[];
+    role?: string[];
+    status?: string[];
+  }>({});
+
+  useEffect(() => {
+    fetchRuns(filters).catch((err: unknown) => {
+      console.error(err);
+    });
+  }, [filters, fetchRuns]);
 
   const sourceRun = runs.find((run: Run) => run.run_id === sourceRunId) ?? null;
   const dispatchedRun = runs.find((run: Run) => run.run_id === dispatchedRunId) ?? null;
@@ -221,6 +241,22 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full border border-slate-800 bg-slate-900/50">
+            <div
+              className={clsx(
+                "h-1.5 w-1.5 rounded-full",
+                wsStatus === "connected"
+                  ? "bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]"
+                  : wsStatus === "connecting"
+                    ? "bg-amber-500"
+                    : "bg-red-500",
+              )}
+            />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              {wsStatus}
+            </span>
+          </div>
+
           {projectState && <MemoryHealthIndicator status={projectState.memoryHealth.status} />}
 
           <div className="flex items-center rounded-lg border border-slate-800 bg-slate-900 p-1">
@@ -272,6 +308,8 @@ export default function App() {
               onSelect={(runId: string) => {
                 setSourceRunId(runId);
               }}
+              onFilterChange={setFilters}
+              currentFilters={filters}
             />
           </div>
           <div className="border-t border-slate-800 bg-slate-900/80 p-4">

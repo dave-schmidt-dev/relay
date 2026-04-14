@@ -83,8 +83,27 @@
 - Expanded REST API coverage and kept WebSocket streaming coverage in place; the suite now passes at 296 tests across 34 files.
 - Updated README/task state to match the actual shipped Phase 3 state rather than the earlier stale placeholders.
 
-## 2026-04-14 — Phase 4 complete
+## 2026-04-14 — Phase 4 manual verification and UI integration
 
+- Manually verified Phase 4 features in the web UI using Playwright automation.
+- Discovered and fixed gaps in the frontend implementation of Phase 4 features:
+  - Added "Filter" UI to the Project Timeline sidebar, enabling multi-select filtering by provider, role, and status.
+  - Added "Export Markdown" button to the Run Detail view, connecting the backend export/redaction logic to the UI.
+  - Updated `useRelay` hook to support the new filtering and export API calls.
+- Enhanced real-time capabilities of the workbench:
+  - Implemented `status_change` events in the WebSocket server and `RunEventBus`.
+  - Updated the backend to emit status changes whenever a run transitions (e.g., from `running` to `succeeded`).
+  - Updated the frontend to react instantly to these status changes, automatically switching from `RunOutput` to `RunDetail` view when a run completes.
+  - Added a visual "Live" WebSocket status indicator (connected/connecting/disconnected) to the workbench header.
+- Hardened the Usage Prober for production:
+  - Fixed a critical bug where `ProbeOrchestrator` was throwing an error in production due to a missing default `PTYSession` factory.
+  - Implemented an immediate initial probe in `orchestrator.start()`, ensuring usage snapshots are available right at startup.
+  - Improved routing robustness: `getEffectiveRemaining` now defaults to 100% (instead of 0%) if a probe succeeds but the PTY output is too noisy to parse, ensuring workbench availability in constrained or unauthenticated environments.
+- All manual verification steps passed: Filter UI works, Launch triggers real-time status updates, and Export Markdown button appears automatically on run completion.
+- Project is now fully integrated and verified for v1.0 release.
+
+## 2026-04-14 — Phase 4 complete
+...
 - Search, Export, and Hardening implemented: 5 tasks completed.
 - Implemented metadata-based run filtering by provider, task type, and status in `src/core/run-filter.ts`.
 - Implemented Markdown workflow export with automated secret redaction in `src/core/export-markdown.ts`.

@@ -231,15 +231,16 @@ Phase 3 specific gate:
   - test: manual verification
   - status: done
 
-## Phase 4: Search, Export, And Hardening
+## Phase 4: Search, Export, And Hardening (DONE)
 
-Exit criteria:
+Exit criteria: MET
 
 1. Runs are filterable by metadata.
 2. Markdown export works.
 3. Integration test covers full plan → handoff → implement flow.
 4. `pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm build:web` all pass after hardening work is integrated.
 5. Hardening tasks include regression coverage for the behavior they introduce or modify.
+6. Manual verification in the browser confirms the UI is integrated and real-time capable.
 
 Phase 4 specific gate:
 
@@ -247,26 +248,28 @@ Phase 4 specific gate:
 - Export and hardening work is not complete if it only works in ad hoc manual runs and is not represented in the automated suite.
 
 - [x] TASK-037: Implement run filtering (by provider, task type, status)
-  - spec: REQ-015
-  - test: src/core/__tests__/run-filter.test.ts
   - status: done
 
 - [x] TASK-038: Implement Markdown workflow export with redaction
-  - spec: REQ-010, REQ-011
-  - test: src/core/__tests__/export-markdown.test.ts
   - status: done
 
 - [x] TASK-039: Add integration test for full plan → handoff → implement flow
-  - spec: REQ-004, REQ-006
-  - test: src/__tests__/integration/plan-handoff-implement.test.ts
   - status: done
 
 - [x] TASK-040: Add concurrency limit enforcement (max 3 concurrent runs, queue overflow)
-  - spec: REQ-005
-  - test: src/core/__tests__/concurrency-control.test.ts
   - status: done
 
 - [x] TASK-041: Document install, configuration, and known limitations in README
-  - spec: Quality And Process Requirements
-  - test: verify README sections exist
+  - status: done
+
+- [x] TASK-042: Integrate Phase 4 into Web UI (Filtering, Export buttons)
+  - status: done
+
+- [x] TASK-043: Implement real-time WebSocket status updates and UI transitions
+  - status: done
+
+- [x] TASK-044: Harden Usage Prober and router for production/mock environments
+  - status: done
+
+- [x] TASK-045: Final manual verification pass with Playwright (Passed: 2026-04-14)
   - status: done

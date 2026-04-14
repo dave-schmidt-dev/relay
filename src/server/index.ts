@@ -27,6 +27,8 @@ async function main() {
     globalStoragePath: path.join(os.homedir(), ".relay", "usage"),
     providers,
     intervalMs: config.probeInterval * 1000,
+    envAllowlist: config.envAllowlist,
+    projectRoot,
   });
 
   orchestrator.start();

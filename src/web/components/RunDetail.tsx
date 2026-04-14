@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Clock,
   Cpu,
+  Download,
   Hash,
   StopCircle,
   Timer,
@@ -23,10 +24,11 @@ interface RunDetailProps {
 }
 
 export function RunDetail({ run, onExcerptSelect }: RunDetailProps) {
-  const { cancelRun, fetchRunLogs, fetchRunOutput } = useRelay();
+  const { cancelRun, fetchRunLogs, fetchRunOutput, exportRun } = useRelay();
   const [finalOutput, setFinalOutput] = useState<string | null>(null);
   const [rawStdout, setRawStdout] = useState("");
   const [isCanceling, setIsCanceling] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const loadOutput = useCallback(async () => {
     const logs = await fetchRunLogs(run.run_id);
@@ -54,6 +56,19 @@ export function RunDetail({ run, onExcerptSelect }: RunDetailProps) {
       alert("Failed to cancel run");
     } finally {
       setIsCanceling(false);
+    }
+  };
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const result = await exportRun(run.run_id);
+      alert(`Run exported to: ${result.exportPath}`);
+    } catch (err: unknown) {
+      console.error("Failed to export run:", err);
+      alert("Failed to export run");
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -110,18 +125,31 @@ export function RunDetail({ run, onExcerptSelect }: RunDetailProps) {
             </h2>
           </div>
 
-          {(run.status === "running" || run.status === "queued") && (
+          <div className="flex items-center gap-2">
             <button
               onClick={() => {
-                handleCancel().catch(console.error);
+                handleExport().catch(console.error);
               }}
-              disabled={isCanceling}
-              className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-red-900/20 transition-colors hover:bg-red-500 disabled:opacity-50"
+              disabled={isExporting}
+              className="flex items-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm font-bold text-slate-200 border border-slate-700 transition-colors hover:bg-slate-700 disabled:opacity-50"
             >
-              <StopCircle className="w-4 h-4" />
-              {isCanceling ? "Canceling..." : "Cancel Run"}
+              <Download className="w-4 h-4" />
+              {isExporting ? "Exporting..." : "Export Markdown"}
             </button>
-          )}
+
+            {(run.status === "running" || run.status === "queued") && (
+              <button
+                onClick={() => {
+                  handleCancel().catch(console.error);
+                }}
+                disabled={isCanceling}
+                className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-red-900/20 transition-colors hover:bg-red-500 disabled:opacity-50"
+              >
+                <StopCircle className="w-4 h-4" />
+                {isCanceling ? "Canceling..." : "Cancel Run"}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-6 p-6 md:grid-cols-2 lg:grid-cols-4">

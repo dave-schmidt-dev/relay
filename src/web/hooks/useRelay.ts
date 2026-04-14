@@ -27,6 +27,9 @@ export function useRelay() {
   const [runLogs, setRunLogs] = useState<Record<string, RunLogs>>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [wsStatus, setWsStatus] = useState<"connecting" | "connected" | "disconnected">(
+    "connecting",
+  );
 
   const wsRef = useRef<WebSocket | null>(null);
   const subscribedRuns = useRef<Set<string>>(new Set());
@@ -42,28 +45,71 @@ export function useRelay() {
     }
   }, []);
 
-  const fetchRuns = useCallback(async () => {
-    try {
-      const res = await fetch("/api/runs");
-      if (!res.ok) throw new Error("Failed to fetch runs");
-      const runIds = (await res.json()) as string[];
+  const fetchRuns = useCallback(
+    async (filters?: {
+      provider?: string | string[];
+      role?: string | string[];
+      status?: string | string[];
+    }) => {
+      try {
+        let url = "/api/runs";
+        if (filters) {
+          const params = new URLSearchParams();
+          if (filters.provider) {
+            if (Array.isArray(filters.provider)) {
+              filters.provider.forEach((p) => {
+                params.append("provider", p);
+              });
+            } else {
+              params.set("provider", filters.provider);
+            }
+          }
+          if (filters.role) {
+            if (Array.isArray(filters.role)) {
+              filters.role.forEach((r) => {
+                params.append("role", r);
+              });
+            } else {
+              params.set("role", filters.role);
+            }
+          }
+          if (filters.status) {
+            if (Array.isArray(filters.status)) {
+              filters.status.forEach((s) => {
+                params.append("status", s);
+              });
+            } else {
+              params.set("status", filters.status);
+            }
+          }
+          const queryString = params.toString();
+          if (queryString) {
+            url += "?" + queryString;
+          }
+        }
 
-      const runPromises = runIds.map(async (id) => {
-        const r = await fetch(`/api/runs/${id}`);
-        if (!r.ok) return null;
-        return (await r.json()) as Run;
-      });
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Failed to fetch runs");
+        const runIds = (await res.json()) as string[];
 
-      const loadedRuns = (await Promise.all(runPromises)).filter((r): r is Run => r !== null);
-      setRuns(
-        loadedRuns.sort(
-          (a, b) => new Date(b.started_at ?? 0).getTime() - new Date(a.started_at ?? 0).getTime(),
-        ),
-      );
-    } catch (err: unknown) {
-      console.error("Failed to fetch runs:", err);
-    }
-  }, []);
+        const runPromises = runIds.map(async (id) => {
+          const r = await fetch(`/api/runs/${id}`);
+          if (!r.ok) return null;
+          return (await r.json()) as Run;
+        });
+
+        const loadedRuns = (await Promise.all(runPromises)).filter((r): r is Run => r !== null);
+        setRuns(
+          loadedRuns.sort(
+            (a, b) => new Date(b.started_at ?? 0).getTime() - new Date(a.started_at ?? 0).getTime(),
+          ),
+        );
+      } catch (err: unknown) {
+        console.error("Failed to fetch runs:", err);
+      }
+    },
+    [],
+  );
 
   const fetchUsage = useCallback(async () => {
     try {
@@ -83,7 +129,9 @@ export function useRelay() {
   }, [fetchProjectState, fetchRuns, fetchUsage]);
 
   useEffect(() => {
-    void refreshAll();
+    refreshAll().catch((err: unknown) => {
+      console.error(err);
+    });
   }, [refreshAll]);
 
   // WebSocket Setup
@@ -96,7 +144,12 @@ export function useRelay() {
     ws.onmessage = (event) => {
       try {
         const data = typeof event.data === "string" ? event.data : "";
-        const message = JSON.parse(data) as { type: string; runId: string; chunk: string };
+        const message = JSON.parse(data) as {
+          type: string;
+          runId: string;
+          chunk?: string;
+          status?: Run["status"];
+        };
         if (message.type === "stdout" || message.type === "stderr") {
           setRunLogs((prev) => {
             const current = prev[message.runId] ?? { stdout: "", stderr: "" };
@@ -106,10 +159,15 @@ export function useRelay() {
               ...prev,
               [message.runId]: {
                 ...current,
-                [typeKey]: existingContent + message.chunk,
+                [typeKey]: existingContent + (message.chunk ?? ""),
               },
             };
           });
+        } else if (message.type === "status_change" && message.status) {
+          const newStatus = message.status;
+          setRuns((prev) =>
+            prev.map((run) => (run.run_id === message.runId ? { ...run, status: newStatus } : run)),
+          );
         }
       } catch (err: unknown) {
         console.error("Failed to parse WS message:", err);
@@ -118,10 +176,21 @@ export function useRelay() {
 
     ws.onopen = () => {
       console.log("Connected to Relay WebSocket");
+      setWsStatus("connected");
       // Re-subscribe to any active runs if we re-connected
       subscribedRuns.current.forEach((runId) => {
         ws.send(JSON.stringify({ type: "subscribe", runId }));
       });
+    };
+
+    ws.onclose = () => {
+      console.log("Relay WebSocket disconnected");
+      setWsStatus("disconnected");
+    };
+
+    ws.onerror = () => {
+      console.error("Relay WebSocket error");
+      setWsStatus("disconnected");
     };
 
     return () => {
@@ -257,6 +326,21 @@ export function useRelay() {
     }
   }, []);
 
+  const exportRun = useCallback(async (runId: string, exportId?: string) => {
+    try {
+      const res = await fetch(`/api/runs/${runId}/export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exportId }),
+      });
+      if (!res.ok) throw new Error("Failed to export run");
+      return (await res.json()) as { exportId: string; exportPath: string };
+    } catch (err: unknown) {
+      console.error("Failed to export run:", err);
+      throw err;
+    }
+  }, []);
+
   return {
     projectState,
     runs,
@@ -275,5 +359,8 @@ export function useRelay() {
     fetchRunOutput,
     fetchRunLogs,
     listProjectFiles,
+    exportRun,
+    fetchRuns,
+    wsStatus,
   };
 }

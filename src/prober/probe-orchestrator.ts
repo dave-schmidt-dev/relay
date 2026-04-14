@@ -22,7 +22,7 @@ import { normalizeProbeOutput } from "./ansi.js";
 import { parseClaudeUsage, type ClaudeUsageSnapshot } from "./claude-probe.js";
 import { parseCodexStatus, type CodexUsageSnapshot } from "./codex-probe.js";
 import { parseGeminiStats, type GeminiUsageSnapshot } from "./gemini-probe.js";
-import type { PTYSession } from "./pty-session.js";
+import { createPTYSession, type PTYSession } from "./pty-session.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -48,6 +48,10 @@ export interface ProbeOrchestratorOptions {
   globalStoragePath: string;
   /** Which providers to probe. */
   providers: Provider[];
+  /** Environment variables to allow in PTY sessions. */
+  envAllowlist?: string[];
+  /** Working directory for PTY sessions. */
+  projectRoot?: string;
   /**
    * Optional factory for creating PTY sessions.
    *
@@ -148,6 +152,8 @@ class ProbeOrchestratorImpl implements ProbeOrchestrator {
   private readonly _staleExpirationMs: number;
   private readonly _storagePath: string;
   private readonly _providers: Provider[];
+  private readonly _envAllowlist: string[];
+  private readonly _projectRoot: string;
   private readonly _sessionFactory: ((provider: Provider) => PTYSession) | undefined;
 
   private readonly _snapshots = new Map<Provider, UsageSnapshot>();
@@ -161,19 +167,28 @@ class ProbeOrchestratorImpl implements ProbeOrchestrator {
     this._staleExpirationMs = options.staleExpirationMs ?? 1_800_000;
     this._storagePath = options.globalStoragePath;
     this._providers = options.providers;
+    this._envAllowlist = options.envAllowlist ?? [];
+    this._projectRoot = options.projectRoot ?? process.cwd();
     this._sessionFactory = options.sessionFactory;
   }
 
   start(): void {
     if (this._timer !== null) return; // Already running.
 
-    this._timer = setInterval(() => {
+    const runProbes = () => {
       for (const provider of this._providers) {
         if (this._busy.get(provider) === true) continue;
         // Fire-and-forget; errors are handled inside probeNow.
-        void this.probeNow(provider);
+        void this.probeNow(provider).catch((err: unknown) => {
+          console.error(`[probe-orchestrator] Immediate probe failed for ${provider}:`, err);
+        });
       }
-    }, this._intervalMs);
+    };
+
+    // Run first probe immediately
+    runProbes();
+
+    this._timer = setInterval(runProbes, this._intervalMs);
   }
 
   stop(): Promise<void> {
@@ -268,15 +283,15 @@ class ProbeOrchestratorImpl implements ProbeOrchestrator {
       return session;
     }
 
-    // Real PTY session — import lazily to avoid pulling node-pty into tests
-    // that use a fake factory.
-    // NOTE: We intentionally do NOT call createPTYSession here at module load
-    // time — this branch is only reached in production. Tests always supply
-    // sessionFactory.
-    throw new Error(
-      `No sessionFactory configured and no live session for provider "${provider}". ` +
-        "Pass a sessionFactory in ProbeOrchestratorOptions or call createPTYSession externally.",
-    );
+    // Real PTY session for production
+    const session = createPTYSession({
+      executable: provider, // Mapping provider name to executable
+      cwd: this._projectRoot,
+      envAllowlist: this._envAllowlist,
+      idleTimeoutMs: 15_000, // Reasonable timeout for probe commands
+    });
+    this._sessions.set(provider, session);
+    return session;
   }
 
   /**

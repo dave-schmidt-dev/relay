@@ -73,7 +73,10 @@ export function getEffectiveRemaining(snapshot: UsageSnapshot): number {
   // Exhausted flag takes priority.
   if (snapshot.exhausted) return 0;
 
-  if (snapshot.data === null) return 0;
+  if (snapshot.data === null) {
+    // If we have no data yet but the snapshot isn't an error, assume 100%
+    return snapshot.error ? 0 : 100;
+  }
 
   const values: number[] = [];
 
@@ -99,7 +102,11 @@ export function getEffectiveRemaining(snapshot: UsageSnapshot): number {
     }
   }
 
-  if (values.length === 0) return 0;
+  if (values.length === 0) {
+    // If we have a valid snapshot with data but no specific quota fields found,
+    // assume 100% to allow launch attempts (especially useful in dev/mock envs).
+    return 100;
+  }
 
   // NOTE: Math.min spread is safe; the array is always small (≤3 elements).
   return Math.min(...values);
