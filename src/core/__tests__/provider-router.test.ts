@@ -208,7 +208,15 @@ describe("getEffectiveRemaining", () => {
       staleSince: new Date().toISOString(),
       data: null,
     };
+    // Null data + error should return 0
     expect(getEffectiveRemaining(nullData)).toBe(0);
+
+    const nullDataNoError: UsageSnapshot = {
+      ...nullData,
+      error: null,
+    };
+    // Null data + NO error should return 100 (permissive)
+    expect(getEffectiveRemaining(nullDataNoError)).toBe(100);
 
     expect(
       getEffectiveRemaining(
@@ -218,7 +226,7 @@ describe("getEffectiveRemaining", () => {
           opusPercentLeft: null,
         }),
       ),
-    ).toBe(0);
+    ).toBe(100);
   });
 });
 
