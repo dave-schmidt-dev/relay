@@ -79,6 +79,10 @@ export function parseGeminiStats(text: string): GeminiUsageSnapshot {
     }
   }
 
+  if (snapshot.flashPercentLeft === null && snapshot.proPercentLeft === null) {
+    throw new Error("Gemini stats panel not found");
+  }
+
   return snapshot;
 }
 
