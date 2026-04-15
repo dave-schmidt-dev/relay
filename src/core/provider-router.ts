@@ -16,6 +16,7 @@ import type { UsageSnapshot } from "../prober/probe-orchestrator.js";
 import type { ClaudeUsageSnapshot } from "../prober/claude-probe.js";
 import type { CodexUsageSnapshot } from "../prober/codex-probe.js";
 import type { GeminiUsageSnapshot } from "../prober/gemini-probe.js";
+import type { GithubUsageSnapshot } from "../prober/github-probe.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -44,11 +45,11 @@ export type AffinityRankings = Record<TaskRole, Provider[]>;
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_AFFINITY_RANKINGS: AffinityRankings = {
-  plan: ["claude", "codex", "gemini"],
-  implement: ["codex", "claude", "gemini"],
-  review: ["codex", "claude", "gemini"],
-  research: ["gemini", "claude", "codex"],
-  custom: ["claude", "codex", "gemini"],
+  plan: ["claude", "codex", "gemini", "github"],
+  implement: ["codex", "claude", "gemini", "github"],
+  review: ["codex", "claude", "gemini", "github"],
+  research: ["gemini", "claude", "codex", "github"],
+  custom: ["claude", "codex", "gemini", "github"],
 };
 
 /** Default stale expiration window: 30 minutes in milliseconds. */
@@ -98,6 +99,11 @@ export function getEffectiveRemaining(snapshot: UsageSnapshot): number {
       const d = snapshot.data as GeminiUsageSnapshot;
       if (d.flashPercentLeft !== null) values.push(d.flashPercentLeft);
       if (d.proPercentLeft !== null) values.push(d.proPercentLeft);
+      break;
+    }
+    case "github": {
+      const d = snapshot.data as unknown as GithubUsageSnapshot;
+      if (d.premiumPercentLeft !== null) values.push(d.premiumPercentLeft);
       break;
     }
   }

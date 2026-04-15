@@ -5,8 +5,16 @@ import type { Provider } from "../core/types.js";
 
 const execFile = util.promisify(childProcess.execFile);
 
+/** Mapping from provider ID to CLI executable name. */
+const PROVIDER_BINARIES: Record<Provider, string> = {
+  claude: "claude",
+  codex: "codex",
+  gemini: "gemini",
+  github: "copilot",
+};
+
 /** All known provider CLI names, in declaration order. */
-const PROVIDER_NAMES: readonly Provider[] = ["claude", "codex", "gemini"];
+const PROVIDER_NAMES: readonly Provider[] = ["claude", "codex", "gemini", "github"];
 
 export interface DiscoveredProvider {
   provider: Provider;
@@ -42,7 +50,7 @@ export async function findExecutable(name: string): Promise<string | null> {
 export async function discoverProviders(): Promise<DiscoveredProvider[]> {
   const results = await Promise.all(
     PROVIDER_NAMES.map(async (provider) => {
-      const executablePath = await findExecutable(provider);
+      const executablePath = await findExecutable(PROVIDER_BINARIES[provider]);
       return executablePath !== null ? { provider, executablePath } : null;
     }),
   );
@@ -58,7 +66,7 @@ export async function discoverProviders(): Promise<DiscoveredProvider[]> {
 export async function getProviderVersion(provider: Provider): Promise<string> {
   try {
     // Most providers support --version
-    const { stdout } = await execFile(provider, ["--version"]);
+    const { stdout } = await execFile(PROVIDER_BINARIES[provider], ["--version"]);
     return stdout.trim() || "unknown";
   } catch {
     return "unknown";

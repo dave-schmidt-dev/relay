@@ -1,7 +1,7 @@
 /**
  * Provider type — which AI CLI agent is running.
  */
-export type Provider = "claude" | "codex" | "gemini";
+export type Provider = "claude" | "codex" | "gemini" | "github";
 
 /**
  * Task role the run is fulfilling.

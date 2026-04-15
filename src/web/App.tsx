@@ -30,6 +30,7 @@ export default function App() {
     projectState,
     runs,
     usageSnapshots,
+    isProbing,
     runLogs,
     launchRun,
     subscribeToRun,
@@ -318,6 +319,7 @@ export default function App() {
             </div>
             <UsageDashboard
               snapshots={usageSnapshots}
+              isProbing={isProbing}
               onProbe={() => {
                 void triggerProbe().catch(console.error);
               }}

@@ -102,6 +102,32 @@
 - All manual verification steps passed: Filter UI works, Launch triggers real-time status updates, and Export Markdown button appears automatically on run completion.
 - Project is now fully integrated and verified for v1.0 release.
 
+## 2026-04-14 — Phase 4 Enhancements: GitHub Integration & Prober Hardening
+
+- **GitHub CLI (Copilot) Integration**:
+  - Integrated GitHub CLI as the 4th supported provider (`github` → `copilot` binary).
+  - Implemented GitHub adapter with usage parsing from startup banners and premium request resets.
+  - Added discovery support and handoff prompt building for the GitHub provider.
+- **Robust PTY Probing (Exact ai_monitor Alignment)**:
+  - Upgraded `PTYSession` to support `stopSubstrings` and flexible idle timeouts, mirroring the reliability of the `ai_monitor` project.
+  - Implemented exact multi-stage probe sequences for all providers:
+    - **Claude**: Warmup → `/usage` (with 7 stop substrings) → `/status`.
+    - **Gemini**: Warmup → `/stats` (with 4 stop substrings).
+    - **GitHub**: Warmup (banner) → Second capture (extra stats).
+    - **Codex**: Warmup → `/status` (with 4 stop substrings).
+  - Added comprehensive auto-responses for interactive prompts (e.g., Claude trust gates, plan usage menus) to prevent prober stalls.
+- **Parser Upgrades**:
+  - Rewrote usage parsers for Claude, Codex, Gemini, and GitHub for robust PTY noise handling.
+  - Gemini parser is now case-insensitive and handles multiple output variants (e.g., "Usage remaining" vs "Session Stats").
+  - Claude parser now handles "no-space" labels and "tight" percentages in condensed TUI output.
+- **UI & Hook Enhancements**:
+  - Upgraded `UsageDashboard` with "Collapsed" (status dots) and "Expanded" (detailed metrics) modes.
+  - Updated `useRelay` hook to manage `isProbing` state and 2-minute auto-refresh polling.
+  - Added immediate usage refresh on application load to ensure fresh data in the UI.
+- **Validation**:
+  - All lint errors (including `RegExp#exec`, optional chaining, and void arrow functions) fixed via `eslint --fix`.
+  - All tests passing (316 tests), including updated expectations for new robust parsing results.
+
 ## 2026-04-14 — Phase 4 complete
 ...
 - Search, Export, and Hardening implemented: 5 tasks completed.

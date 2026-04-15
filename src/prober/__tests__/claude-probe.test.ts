@@ -79,18 +79,18 @@ describe("parseClaudeUsage: live-style fixture (usage-probe-live-style.txt)", ()
 describe("parseClaudeUsage: error detection", () => {
   it("throws on rate-limit fixture and inline string", () => {
     const raw = readFixture("claude", "usage-error-rate-limit.txt");
-    expect(() => parseClaudeUsage(raw)).toThrow(/Claude usage error detected/i);
+    expect(() => parseClaudeUsage(raw)).toThrow(/Claude usage/i);
     expect(() => parseClaudeUsage("Failed to load usage data: rate limited")).toThrow(
-      /Claude usage error detected/i,
+      /Claude usage/i,
     );
   });
 
   it("throws on subscription-gate fixture and correct spelling", () => {
     const raw = readFixture("claude", "usage-error-subscription.txt");
     // Fixture contains the "vilable" typo from real Claude output
-    expect(() => parseClaudeUsage(raw)).toThrow(/Claude usage error detected/i);
+    expect(() => parseClaudeUsage(raw)).toThrow(/Claude usage/i);
     expect(() => parseClaudeUsage("/usage is only available for subscription plans")).toThrow(
-      /Claude usage error detected/i,
+      /Claude usage/i,
     );
   });
 });

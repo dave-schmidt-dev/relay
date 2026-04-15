@@ -24,6 +24,7 @@ export function useRelay() {
   const [projectState, setProjectState] = useState<ProjectState | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [usageSnapshots, setUsageSnapshots] = useState<Record<string, UsageSnapshot>>({});
+  const [isProbing, setIsProbing] = useState(false);
   const [runLogs, setRunLogs] = useState<Record<string, RunLogs>>({});
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -122,11 +123,27 @@ export function useRelay() {
     }
   }, []);
 
+  const triggerProbe = useCallback(async () => {
+    setIsProbing(true);
+    try {
+      const res = await fetch("/api/usage/probe", { method: "POST" });
+      if (!res.ok) throw new Error("Failed to trigger probe");
+      await fetchUsage();
+    } catch (err: unknown) {
+      console.error("Failed to trigger probe:", err);
+    } finally {
+      setIsProbing(false);
+    }
+  }, [fetchUsage]);
+
   const refreshAll = useCallback(async () => {
     setIsLoading(true);
+    // Fetch cached data first so UI isn't empty
     await Promise.all([fetchProjectState(), fetchRuns(), fetchUsage()]);
     setIsLoading(false);
-  }, [fetchProjectState, fetchRuns, fetchUsage]);
+    // Then trigger a fresh probe in the background to get latest stats
+    void triggerProbe().catch(console.error);
+  }, [fetchProjectState, fetchRuns, fetchUsage, triggerProbe]);
 
   useEffect(() => {
     refreshAll().catch((err: unknown) => {
@@ -236,16 +253,6 @@ export function useRelay() {
     [subscribeToRun],
   );
 
-  const triggerProbe = useCallback(async () => {
-    try {
-      const res = await fetch("/api/usage/probe", { method: "POST" });
-      if (!res.ok) throw new Error("Failed to trigger probe");
-      await fetchUsage();
-    } catch (err: unknown) {
-      console.error("Failed to trigger probe:", err);
-    }
-  }, [fetchUsage]);
-
   const previewHandoff = useCallback(async (handoff: HandoffDraftRequest) => {
     try {
       const res = await fetch("/api/handoffs/preview", {
@@ -341,10 +348,21 @@ export function useRelay() {
     }
   }, []);
 
+  // Auto-refresh usage every 2 minutes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void fetchUsage();
+    }, 120_000);
+    return () => {
+      clearInterval(interval);
+    };
+  }, [fetchUsage]);
+
   return {
     projectState,
     runs,
     usageSnapshots,
+    isProbing,
     runLogs,
     activeRunId,
     setActiveRunId,

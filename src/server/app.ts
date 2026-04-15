@@ -30,6 +30,7 @@ import { Provider, TaskRole, Handoff, ContextItem, RunStatus } from "../core/typ
 import { claudeAdapter } from "../adapters/claude-adapter.js";
 import { codexAdapter } from "../adapters/codex-adapter.js";
 import { geminiAdapter } from "../adapters/gemini-adapter.js";
+import { githubAdapter } from "../adapters/github-adapter.js";
 import { ProviderAdapter } from "../adapters/adapter-types.js";
 import { getProviderVersion } from "../adapters/discovery.js";
 
@@ -37,6 +38,7 @@ const ADAPTERS: Record<Provider, ProviderAdapter> = {
   claude: claudeAdapter,
   codex: codexAdapter,
   gemini: geminiAdapter,
+  github: githubAdapter,
 };
 
 interface RunRequestBody {
@@ -662,7 +664,7 @@ export function createApp(
 
   app.post("/api/usage/probe", (_req: Request, res: Response) => {
     try {
-      const providers: Provider[] = ["claude", "codex", "gemini"];
+      const providers: Provider[] = ["claude", "codex", "gemini", "github"];
       Promise.all(
         providers.map((p) => {
           return orchestrator

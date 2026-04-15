@@ -24,7 +24,7 @@ describe("discoverProviders", () => {
 
   it("each discovered provider has a valid provider name and a non-empty path", async () => {
     const providers = await discoverProviders();
-    const validNames = new Set(["claude", "codex", "gemini"]);
+    const validNames = new Set(["claude", "codex", "gemini", "github"]);
 
     for (const discovered of providers) {
       expect(validNames.has(discovered.provider)).toBe(true);

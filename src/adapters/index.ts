@@ -9,3 +9,4 @@ export type { ProviderAdapter, HandoffPacket, HandoffContextItem } from "./adapt
 export { claudeAdapter } from "./claude-adapter.js";
 export { codexAdapter } from "./codex-adapter.js";
 export { geminiAdapter } from "./gemini-adapter.js";
+export { githubAdapter } from "./github-adapter.js";

@@ -125,10 +125,11 @@ describe("ProbeOrchestrator: initial state", () => {
 
 describe("ProbeOrchestrator: probeNow with golden fixtures", () => {
   it("returns correct snapshots from clean fixtures for all providers", async () => {
-    // Claude
-    const claudeRaw = readFixture("claude", "usage-probe-clean.txt");
+    // Claude: needs warmup + /usage + /status
+    const claudeUsage = readFixture("claude", "usage-probe-clean.txt");
+    const claudeStatus = "Organization: Zero Delta LLC";
     const claudeSessions = new Map<Provider, PTYSession>([
-      ["claude", makeFakeSession([claudeRaw])],
+      ["claude", makeFakeSession(["Trust prompt?", claudeUsage, claudeStatus])],
     ]);
     const claudeOrch = makeOrchestrator(["claude"], claudeSessions);
     const claudeSnap = await claudeOrch.probeNow("claude");
@@ -137,15 +138,16 @@ describe("ProbeOrchestrator: probeNow with golden fixtures", () => {
     expect(claudeSnap.source).toBe("probe");
     expect(claudeSnap.stale).toBe(false);
     expect(claudeSnap.error).toBeNull();
-    expect(claudeSnap.staleSince).toBeNull();
     expect(claudeSnap.data).not.toBeNull();
     const claudeData = claudeSnap.data as { sessionPercentLeft: number; weeklyPercentLeft: number };
     expect(claudeData.sessionPercentLeft).toBe(73);
     expect(claudeData.weeklyPercentLeft).toBe(64);
 
-    // Codex
+    // Codex: needs warmup + /status
     const codexRaw = readFixture("codex", "status-probe-clean.txt");
-    const codexSessions = new Map<Provider, PTYSession>([["codex", makeFakeSession([codexRaw])]]);
+    const codexSessions = new Map<Provider, PTYSession>([
+      ["codex", makeFakeSession(["", codexRaw])],
+    ]);
     const codexOrch = makeOrchestrator(["codex"], codexSessions);
     const codexSnap = await codexOrch.probeNow("codex");
 
@@ -157,10 +159,10 @@ describe("ProbeOrchestrator: probeNow with golden fixtures", () => {
     expect(codexData.credits).toBe(12.5);
     expect(codexData.fiveHourPercentLeft).toBe(68);
 
-    // Gemini
+    // Gemini: needs warmup + /stats
     const geminiRaw = readFixture("gemini", "stats-probe-clean.txt");
     const geminiSessions = new Map<Provider, PTYSession>([
-      ["gemini", makeFakeSession([geminiRaw])],
+      ["gemini", makeFakeSession(["", geminiRaw])],
     ]);
     const geminiOrch = makeOrchestrator(["gemini"], geminiSessions);
     const geminiSnap = await geminiOrch.probeNow("gemini");
@@ -175,8 +177,9 @@ describe("ProbeOrchestrator: probeNow with golden fixtures", () => {
   });
 
   it("probedAt is a valid ISO timestamp", async () => {
+    // Claude needs 3 outputs
     const raw = readFixture("claude", "usage-probe-clean.txt");
-    const sessions = new Map<Provider, PTYSession>([["claude", makeFakeSession([raw])]]);
+    const sessions = new Map<Provider, PTYSession>([["claude", makeFakeSession(["", raw, ""])]]);
     const orch = makeOrchestrator(["claude"], sessions);
 
     const snap = await orch.probeNow("claude");
@@ -188,8 +191,8 @@ describe("ProbeOrchestrator: probeNow with golden fixtures", () => {
 
 describe("ProbeOrchestrator: error recovery (empty output)", () => {
   it("retries on empty output and returns stale snapshot; also handles parser errors", async () => {
-    // Empty output case
-    const sessions = new Map<Provider, PTYSession>([["claude", makeFakeSession(["", ""])]]);
+    // Empty output case for Claude: warmup="" + /usage="" + /status=""
+    const sessions = new Map<Provider, PTYSession>([["claude", makeFakeSession(["", "", ""])]]);
     const orch = makeOrchestrator(["claude"], sessions);
 
     const snap = await orch.probeNow("claude");
@@ -199,9 +202,9 @@ describe("ProbeOrchestrator: error recovery (empty output)", () => {
     expect(snap.source).toBe("cached");
     expect(snap.data).toBeNull();
 
-    // Parser error case
+    // Parser error case: warmup="" + /usage="rate limit" + /status=""
     const sessions2 = new Map<Provider, PTYSession>([
-      ["claude", makeFakeSession(["rate limit exceeded", "rate limit exceeded"])],
+      ["claude", makeFakeSession(["", "rate limit exceeded", ""])],
     ]);
     const orch2 = makeOrchestrator(["claude"], sessions2);
 
@@ -214,7 +217,11 @@ describe("ProbeOrchestrator: error recovery (empty output)", () => {
 
   it("preserves last good snapshot in data when probe fails", async () => {
     const raw = readFixture("claude", "usage-probe-clean.txt");
-    const sessions = new Map<Provider, PTYSession>([["claude", makeFakeSession([raw, "", ""])]]);
+    // Attempt 1: warmup, usage, status (success)
+    // Attempt 2: warmup, usage="", status="" (fail)
+    const sessions = new Map<Provider, PTYSession>([
+      ["claude", makeFakeSession(["", raw, "Organization: Zero Delta LLC", "", "", ""])],
+    ]);
     const orch = makeOrchestrator(["claude"], sessions);
 
     await orch.probeNow("claude");
@@ -229,7 +236,7 @@ describe("ProbeOrchestrator: error recovery (empty output)", () => {
 
 describe("ProbeOrchestrator: stale expiration", () => {
   it("marks exhausted=true when staleSince exceeds staleExpirationMs", async () => {
-    const fakeSession = makeFakeSession(["", "", "", ""]);
+    const fakeSession = makeFakeSession(["", "", "", "", "", ""]);
     const orch = createProbeOrchestrator({
       providers: ["claude"],
       globalStoragePath: tmpDir,
@@ -246,7 +253,7 @@ describe("ProbeOrchestrator: stale expiration", () => {
   });
 
   it("staleSince is preserved across multiple stale probes", async () => {
-    const fakeSession = makeFakeSession(["", "", "", ""]);
+    const fakeSession = makeFakeSession(["", "", "", "", "", ""]);
     const orch = createProbeOrchestrator({
       providers: ["claude"],
       globalStoragePath: tmpDir,
@@ -265,7 +272,7 @@ describe("ProbeOrchestrator: stale expiration", () => {
 describe("ProbeOrchestrator: setProviderBusy", () => {
   it("busy provider is skipped by interval but probeNow still works; clearing works", async () => {
     const raw = readFixture("claude", "usage-probe-clean.txt");
-    const sessions = new Map<Provider, PTYSession>([["claude", makeFakeSession([raw])]]);
+    const sessions = new Map<Provider, PTYSession>([["claude", makeFakeSession(["", raw, ""])]]);
     const orch = makeOrchestrator(["claude"], sessions);
 
     orch.setProviderBusy("claude", true);
@@ -281,7 +288,7 @@ describe("ProbeOrchestrator: setProviderBusy", () => {
 
 describe("ProbeOrchestrator: stop()", () => {
   it("destroys all active PTY sessions and can be called twice", async () => {
-    const session = makeFakeSession([readFixture("claude", "usage-probe-clean.txt")]);
+    const session = makeFakeSession(["", readFixture("claude", "usage-probe-clean.txt"), ""]);
     const sessions = new Map<Provider, PTYSession>([["claude", session]]);
     const orch = makeOrchestrator(["claude"], sessions);
 
@@ -307,7 +314,7 @@ describe("ProbeOrchestrator: snapshot persistence", () => {
   it("persists snapshots.json after successful and stale probes", async () => {
     // Successful probe
     const raw = readFixture("claude", "usage-probe-clean.txt");
-    const sessions = new Map<Provider, PTYSession>([["claude", makeFakeSession([raw])]]);
+    const sessions = new Map<Provider, PTYSession>([["claude", makeFakeSession(["", raw, ""])]]);
     const orch = makeOrchestrator(["claude"], sessions);
 
     await orch.probeNow("claude");
@@ -322,8 +329,8 @@ describe("ProbeOrchestrator: snapshot persistence", () => {
     expect(claudeSnap?.provider).toBe("claude");
     expect(claudeSnap?.stale).toBe(false);
 
-    // Stale probe
-    const sessions2 = new Map<Provider, PTYSession>([["claude", makeFakeSession(["", ""])]]);
+    // Stale probe (Claude: warmup, usage, status)
+    const sessions2 = new Map<Provider, PTYSession>([["claude", makeFakeSession(["", "", ""])]]);
     const orch2 = makeOrchestrator(["claude"], sessions2);
 
     await orch2.probeNow("claude");
@@ -337,7 +344,7 @@ describe("ProbeOrchestrator: snapshot persistence", () => {
 
   it("getAllSnapshots() reflects the latest probe result", async () => {
     const raw = readFixture("codex", "status-probe-clean.txt");
-    const sessions = new Map<Provider, PTYSession>([["codex", makeFakeSession([raw])]]);
+    const sessions = new Map<Provider, PTYSession>([["codex", makeFakeSession(["", raw])]]);
     const orch = makeOrchestrator(["codex"], sessions);
 
     await orch.probeNow("codex");

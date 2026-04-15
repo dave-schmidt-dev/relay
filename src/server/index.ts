@@ -22,7 +22,7 @@ async function main() {
   const { config } = await initProjectStorage(projectRoot);
 
   // Initialize and start the usage prober
-  const providers: Provider[] = ["claude", "codex", "gemini"];
+  const providers: Provider[] = ["claude", "codex", "gemini", "github"];
   const orchestrator = createProbeOrchestrator({
     globalStoragePath: path.join(os.homedir(), ".relay", "usage"),
     providers,

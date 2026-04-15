@@ -18,10 +18,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import type { Provider } from "../core/types.js";
-import { normalizeProbeOutput } from "./ansi.js";
 import { parseClaudeUsage, type ClaudeUsageSnapshot } from "./claude-probe.js";
 import { parseCodexStatus, type CodexUsageSnapshot } from "./codex-probe.js";
 import { parseGeminiStats, type GeminiUsageSnapshot } from "./gemini-probe.js";
+import { parseGithubUsage, type GithubUsageSnapshot } from "./github-probe.js";
 import { createPTYSession, type PTYSession } from "./pty-session.js";
 
 // ---------------------------------------------------------------------------
@@ -36,7 +36,7 @@ export interface UsageSnapshot {
   error: string | null;
   stale: boolean;
   staleSince: string | null;
-  data: ClaudeUsageSnapshot | CodexUsageSnapshot | GeminiUsageSnapshot | null;
+  data: ClaudeUsageSnapshot | CodexUsageSnapshot | GeminiUsageSnapshot | GithubUsageSnapshot | null;
 }
 
 export interface ProbeOrchestratorOptions {
@@ -86,12 +86,38 @@ export interface ProbeOrchestrator {
 // Provider probe commands
 // ---------------------------------------------------------------------------
 
+/** Mapping from provider ID to CLI executable name. */
+const PROVIDER_BINARIES: Record<Provider, string> = {
+  claude: "claude",
+  codex: "codex",
+  gemini: "gemini",
+  github: "copilot",
+};
+
+/** Common trust prompts to auto-answer during PTY probing. */
+const TRUST_PROMPTS = [
+  { pattern: /trust the files in this folder/i, response: "y" },
+  { pattern: /Quick safety check/i, response: "" },
+  { pattern: /Yes, I trust this folder/i, response: "" },
+  { pattern: /Ready to code here/i, response: "" },
+  { pattern: /Press Enter to continue/i, response: "" },
+  // Extra Claude menus
+  { pattern: /Show plan usage limits/i, response: "" },
+  { pattern: /Show plan/i, response: "" },
+  { pattern: /Show Claude Code status/i, response: "" },
+  { pattern: /Show Claude Code/i, response: "" },
+];
+
 /** The command string sent to each provider's PTY session to trigger usage output. */
 const PROBE_COMMANDS: Record<Provider, string> = {
   claude: "/usage",
-  codex: "status",
+  codex: "/status",
   gemini: "/stats",
+  github: "", // GitHub Copilot CLI shows stats in startup banner
 };
+
+/** Providers whose stats appear in startup banner and thus need a fresh session each probe. */
+const RESTART_ON_PROBE: Provider[] = ["github", "gemini"];
 
 // ---------------------------------------------------------------------------
 // Parsing dispatch
@@ -105,7 +131,7 @@ const PROBE_COMMANDS: Record<Provider, string> = {
 function parseOutput(
   provider: Provider,
   normalized: string,
-): ClaudeUsageSnapshot | CodexUsageSnapshot | GeminiUsageSnapshot {
+): ClaudeUsageSnapshot | CodexUsageSnapshot | GeminiUsageSnapshot | GithubUsageSnapshot {
   switch (provider) {
     case "claude":
       return parseClaudeUsage(normalized);
@@ -113,6 +139,8 @@ function parseOutput(
       return parseCodexStatus(normalized);
     case "gemini":
       return parseGeminiStats(normalized);
+    case "github":
+      return parseGithubUsage(normalized);
   }
 }
 
@@ -125,7 +153,7 @@ function parseOutput(
  */
 function isExhausted(
   provider: Provider,
-  data: ClaudeUsageSnapshot | CodexUsageSnapshot | GeminiUsageSnapshot,
+  data: ClaudeUsageSnapshot | CodexUsageSnapshot | GeminiUsageSnapshot | GithubUsageSnapshot,
 ): boolean {
   switch (provider) {
     case "claude": {
@@ -139,6 +167,10 @@ function isExhausted(
     case "gemini": {
       const d = data as GeminiUsageSnapshot;
       return d.flashPercentLeft === 0 || d.proPercentLeft === 0;
+    }
+    case "github": {
+      const d = data as GithubUsageSnapshot;
+      return d.premiumPercentLeft === 0;
     }
   }
 }
@@ -207,28 +239,148 @@ class ProbeOrchestratorImpl implements ProbeOrchestrator {
   }
 
   async probeNow(provider: Provider): Promise<UsageSnapshot> {
-    const session = this._getOrCreateSession(provider);
-    const command = PROBE_COMMANDS[provider];
-
-    // First attempt.
-    let raw = await session.probe(command);
-    let normalized = normalizeProbeOutput(raw);
-
-    // Retry once on empty output (REQ-014 error recovery).
-    if (normalized.trim() === "") {
-      raw = await session.probe(command);
-      normalized = normalizeProbeOutput(raw);
+    if (RESTART_ON_PROBE.includes(provider)) {
+      const existing = this._sessions.get(provider);
+      if (existing) {
+        existing.destroy();
+        this._sessions.delete(provider);
+      }
     }
 
+    const session = this._getOrCreateSession(provider);
     const now = new Date().toISOString();
 
-    if (normalized.trim() === "") {
-      // Both attempts produced empty output — mark stale.
-      return this._markStale(provider, now, "Probe returned empty output after retry");
-    }
-
     try {
-      const data = parseOutput(provider, normalized);
+      if (provider === "claude") {
+        // EXACT ai_monitor sequence: warmup -> /usage -> /status
+        // Warmup: timeout 4.0, idle 900ms
+        await session.probe("", 900);
+
+        // Usage: timeout 24.0, stop substrings, idle 2000ms
+        const usageRaw = await session.probe("/usage", 2000, [
+          "Current session",
+          "Current week (all models)",
+          "Failed to load usage data",
+          "failed to load usage data",
+          "failedtoloadusagedata",
+          "/usage is only",
+          "/usageisonly",
+        ]);
+
+        // Status: timeout 12.0, idle 3000ms
+        const statusRaw = await session.probe("/status", 3000);
+
+        const data = parseClaudeUsage(usageRaw, statusRaw);
+
+        const snapshot: UsageSnapshot = {
+          provider,
+          probedAt: now,
+          source: "probe",
+          exhausted: isExhausted(provider, data),
+          error: null,
+          stale: false,
+          staleSince: null,
+          data,
+        };
+        this._snapshots.set(provider, snapshot);
+        this._persistSnapshots();
+        return snapshot;
+      }
+
+      if (provider === "github") {
+        // EXACT ai_monitor sequence: warmup -> second capture
+        // Warmup (capture startup banner): timeout 20.0, stop substrings, idle 2500ms
+        const warmupRaw = await session.probe("", 2500, [
+          "Environment loaded:",
+          "Type your message",
+        ]);
+
+        // Second capture (extra stats): timeout 8.0, stop substrings, idle 1800ms
+        const extraRaw = await session.probe("", 1800, ["Requests", "Premium"]);
+
+        const merged = `${warmupRaw}\n${extraRaw}`;
+        const data = parseGithubUsage(merged);
+        data.premiumReset = this._getGithubResetLabel();
+
+        const snapshot: UsageSnapshot = {
+          provider,
+          probedAt: now,
+          source: "probe",
+          exhausted: isExhausted(provider, data),
+          error: null,
+          stale: false,
+          staleSince: null,
+          data,
+        };
+        this._snapshots.set(provider, snapshot);
+        this._persistSnapshots();
+        return snapshot;
+      }
+
+      if (provider === "gemini") {
+        // EXACT ai_monitor sequence: warmup -> /stats
+        // Warmup: timeout 5.0, idle 1000ms
+        await session.probe("", 1000);
+
+        // Stats: timeout 10.0, stop substrings, idle 2200ms
+        const statsRaw = await session.probe("/stats", 2200, [
+          "Session Stats",
+          "Usage remaining",
+          "gemini-2.5-pro",
+          "gemini-3.1-pro-preview",
+        ]);
+
+        const data = parseGeminiStats(statsRaw);
+
+        const snapshot: UsageSnapshot = {
+          provider,
+          probedAt: now,
+          source: "probe",
+          exhausted: isExhausted(provider, data),
+          error: null,
+          stale: false,
+          staleSince: null,
+          data,
+        };
+        this._snapshots.set(provider, snapshot);
+        this._persistSnapshots();
+        return snapshot;
+      }
+
+      if (provider === ("codex" as Provider)) {
+        // EXACT ai_monitor sequence: warmup -> /status
+        // Warmup: timeout 4.0, idle 1000ms
+        await session.probe("", 1000);
+
+        // Status: timeout 18.0, stop substrings, idle 3500ms
+        const statusRaw = await session.probe("/status", 3500, [
+          "Credits:",
+          "5h limit",
+          "5-hour limit",
+          "Weekly limit",
+        ]);
+
+        const data = parseCodexStatus(statusRaw);
+        const snapshot: UsageSnapshot = {
+          provider,
+          probedAt: now,
+          source: "probe",
+          exhausted: isExhausted(provider, data),
+          error: null,
+          stale: false,
+          staleSince: null,
+          data,
+        };
+        this._snapshots.set(provider, snapshot);
+        this._persistSnapshots();
+        return snapshot;
+      }
+
+      // Default (should not be reached if all Providers are handled above)
+      const command = PROBE_COMMANDS[provider];
+      const raw = await session.probe(command);
+      const data = parseOutput(provider, raw);
+
       const snapshot: UsageSnapshot = {
         provider,
         probedAt: now,
@@ -285,9 +437,10 @@ class ProbeOrchestratorImpl implements ProbeOrchestrator {
 
     // Real PTY session for production
     const session = createPTYSession({
-      executable: provider, // Mapping provider name to executable
+      executable: PROVIDER_BINARIES[provider],
       cwd: this._projectRoot,
       envAllowlist: this._envAllowlist,
+      autoResponses: TRUST_PROMPTS,
       idleTimeoutMs: 15_000, // Reasonable timeout for probe commands
     });
     this._sessions.set(provider, session);
@@ -344,6 +497,16 @@ class ProbeOrchestratorImpl implements ProbeOrchestrator {
       // NOTE: Swallow — disk errors must not stall the probe cycle.
       console.error("[probe-orchestrator] Failed to persist snapshots:", err);
     }
+  }
+
+  private _getGithubResetLabel(): string {
+    const now = new Date();
+    const year = now.getUTCFullYear() + (now.getUTCMonth() === 11 ? 1 : 0);
+    const month = (now.getUTCMonth() + 1) % 12;
+    const reset = new Date(Date.UTC(year, month, 1, 0, 0, 0));
+    const monthName = reset.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+    const day = reset.getUTCDate().toString().padStart(2, "0");
+    return `Resets ${monthName} ${day} 12:00 AM UTC`;
   }
 }
 

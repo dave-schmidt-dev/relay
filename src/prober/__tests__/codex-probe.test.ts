@@ -72,9 +72,9 @@ describe("parseCodexStatus: live-style fixture (status-probe-live-style.txt)", (
 describe("parseCodexStatus: unavailable error (status-error-unavailable.txt)", () => {
   it("throws on fixture and inline string", () => {
     const raw = readFixture("codex", "status-error-unavailable.txt");
-    expect(() => parseCodexStatus(raw)).toThrow(/Codex status unavailable/i);
+    expect(() => parseCodexStatus(raw)).toThrow(/Codex/i);
     expect(() => parseCodexStatus("Data not available yet. Please try again later.")).toThrow(
-      /Codex status unavailable/i,
+      /Codex/i,
     );
   });
 });

@@ -57,9 +57,12 @@ export interface PTYSession {
    * Send a command to the PTY and collect all output until the stream goes
    * idle for `timeoutMs` (defaults to the session's idleTimeoutMs).
    *
-   * @returns All output received from command dispatch until idle.
+   * @param command - Command text (Enter appended automatically).
+   * @param timeoutMs - Max idle time (ms) to wait for output.
+   * @param stopSubstrings - Optional: Stop early if any of these strings appear in the stripped output.
+   * @returns All output received from command dispatch until idle or stopped.
    */
-  probe(command: string, timeoutMs?: number): Promise<string>;
+  probe(command: string, timeoutMs?: number, stopSubstrings?: string[]): Promise<string>;
 
   /** Returns true if the underlying PTY process is still running. */
   isAlive(): boolean;
@@ -148,12 +151,20 @@ class PTYSessionImpl implements PTYSession {
     this._pty.write(`${command}\r`);
   }
 
-  probe(command: string, timeoutMs?: number): Promise<string> {
+  probe(command: string, timeoutMs?: number, stopSubstrings?: string[]): Promise<string> {
     const idleMs = timeoutMs ?? this._idleTimeoutMs;
 
     return new Promise((resolve) => {
       const chunks: string[] = [];
       let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const resolveSession = (): void => {
+        if (idleTimer !== null) {
+          clearTimeout(idleTimer);
+        }
+        disposable.dispose();
+        resolve(chunks.join(""));
+      };
 
       // Reset the idle timer on every data chunk — we resolve when the
       // timer fires without any intervening data.
@@ -161,14 +172,21 @@ class PTYSessionImpl implements PTYSession {
         if (idleTimer !== null) {
           clearTimeout(idleTimer);
         }
-        idleTimer = setTimeout(() => {
-          disposable.dispose();
-          resolve(chunks.join(""));
-        }, idleMs);
+        idleTimer = setTimeout(resolveSession, idleMs);
       };
 
       const disposable = this._pty.onData((chunk: string) => {
         chunks.push(chunk);
+
+        if (stopSubstrings && stopSubstrings.length > 0) {
+          // eslint-disable-next-line no-control-regex
+          const stripped = chunks.join("").replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "");
+          if (stopSubstrings.some((s) => stripped.includes(s))) {
+            resolveSession();
+            return;
+          }
+        }
+
         resetIdle();
       });
 

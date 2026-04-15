@@ -252,7 +252,7 @@ describe("DEFAULT_AFFINITY_RANKINGS", () => {
       expect(providers).toContain("claude");
       expect(providers).toContain("codex");
       expect(providers).toContain("gemini");
-      expect(providers).toHaveLength(3);
+      expect(providers).toHaveLength(4);
     }
   });
 });
@@ -280,7 +280,7 @@ describe("routeTask — basic routing", () => {
       gemini: makeGeminiSnapshot(),
     });
     const result = assertSuggestion(routeTask("plan", snapshots));
-    expect(result.scores).toHaveLength(3);
+    expect(result.scores).toHaveLength(4);
     const providers = result.scores.map((s: ProviderScore) => s.provider);
     expect(providers).toContain("claude");
     expect(providers).toContain("codex");

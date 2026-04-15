@@ -273,3 +273,27 @@ Phase 4 specific gate:
 
 - [x] TASK-045: Final manual verification pass with Playwright (Passed: 2026-04-14)
   - status: done
+
+## Phase 4 Enhancements: GitHub Integration & Robust Prober (DONE)
+
+Exit criteria: MET
+
+1. GitHub CLI (Copilot) integrated as 4th provider.
+2. PTY session prober handles stop substrings and exact ai_monitor stages.
+3. Usage UI supports compact/expanded views and auto-refresh.
+4. All lint errors and Vitest regressions resolved.
+
+- [x] TASK-046: Integrate GitHub CLI (Copilot) into core types, router, and UI
+  - status: done
+
+- [x] TASK-047: Port robust PTY noise handling and multi-stage probes from ai_monitor
+  - status: done
+
+- [x] TASK-048: Upgrade UsageDashboard with Collapsed/Expanded modes and real-time polling
+  - status: done
+
+- [x] TASK-049: Implement stopSubstrings and warmup sequences in PTYSession
+  - status: done
+
+- [x] TASK-050: Fix linting and Vitest failures across prober and web hooks
+  - status: done
