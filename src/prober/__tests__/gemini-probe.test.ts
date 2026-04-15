@@ -69,14 +69,9 @@ describe("parseGeminiStats: edge cases", () => {
     expect(() => parseGeminiStats("   \n\n   ")).toThrow(/empty/i);
   });
 
-  it("returns null fields and preserves rawText for minimal input", () => {
+  it("throws if no metrics found in panel", () => {
     const text = "Session Stats\nAuth Method: API Key";
-    const snapshot = parseGeminiStats(text);
-    expect(snapshot.flashPercentLeft).toBeNull();
-    expect(snapshot.proPercentLeft).toBeNull();
-    expect(snapshot.flashReset).toBeNull();
-    expect(snapshot.proReset).toBeNull();
-    expect(snapshot.rawText).toBe(text);
+    expect(() => parseGeminiStats(text)).toThrow(/stats panel not found/i);
   });
 
   it("first flash row wins and first pro row wins — subsequent rows ignored", () => {
